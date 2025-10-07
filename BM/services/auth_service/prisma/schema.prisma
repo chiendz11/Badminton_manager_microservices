@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER  // Vai trò mặc định cho người dùng thông thường
+  ADMIN // Vai trò cho quản trị viên
+  // Bạn có thể thêm các vai trò khác nếu cần, ví dụ: EDITOR, MODERATOR
+}
+
+model User {
+  id                 String             @id @default(uuid())
+  email              String             @unique
+  username           String             @unique
+  role               Role               @default(USER)
+  
+  // Rất quan trọng: Thêm dấu ? để cho phép NULL (optional)
+  passwordHash       String?            
+  
+  isActive           Boolean            @default(true)
+  isVerified         Boolean            @default(false)
+  failedLogins       Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  externalIdentities ExternalIdentity[] 
+  sessions           Session[]
+  refreshTokens      RefreshToken[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+} 
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model ExternalIdentity {
+  id                String    @id @default(uuid())
+  userId            String    
+  user              User      @relation(fields: [userId], references: [id])
+  
+  providerName      String    
+  providerUserId    String    
+
+  createdAt         DateTime  @default(now())
+
+  // Mỗi ID từ mỗi nhà cung cấp chỉ thuộc về MỘT User.
+  @@unique([providerName, providerUserId]) 
+}
+
+model VerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  token     String    @unique // Token duy nhất được gửi qua email
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, token])
+}
+
+model ServiceClient {
+  id           String   @id @default(uuid())
+  name         String   @unique        // Tên service, ví dụ: "service-a"
+  clientId     String   @unique        // Giống OAuth client_id
+  clientSecret String                   // Secret để xác thực nội bộ
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

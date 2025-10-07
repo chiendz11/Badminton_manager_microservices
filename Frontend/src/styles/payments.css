@@ -1,0 +1,12 @@
+.qr-code-image {
+    mix-blend-mode: multiply;
+    background-color: transparent;
+    filter: brightness(1.5) contrast(1.2); /* Tăng độ sáng và độ tương phản */
+  }
+  
+  /* Cho modal QR */
+  .qr-modal-image {
+    mix-blend-mode: multiply;
+    background-color: transparent;
+    filter: brightness(1.5) contrast(1.2);
+  }

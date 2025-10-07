@@ -1,0 +1,421 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    padding: 20px;
+}
+
+.modal-overlay .container {
+    position: relative;
+    width: 850px;
+    height: 550px;
+    background: #fff;
+    margin: 20px;
+    border-radius: 30px;
+    box-shadow: 0 0 30px rgba(0, 0, 0, .2);
+    overflow: hidden;
+    font-family: "Poppins", sans-serif;
+}
+
+.modal-overlay .container h1 {
+    font-size: 36px;
+    margin: -10px 0;
+    font-family: "Poppins", sans-serif;
+}
+
+.modal-overlay .container p {
+    font-size: 14.5px;
+    margin: 15px 0;
+    font-family: "Poppins", sans-serif;
+}
+
+/* Form Elements */
+.modal-overlay form { width: 100%; }
+
+.modal-overlay .form-box {
+    position: absolute;
+    right: 0;
+    width: 50%;
+    height: 100%;
+    background: #fff;
+    display: flex;
+    color: #333;
+    text-align: center;
+    padding: 40px;
+    z-index: 1;
+    transition: .6s ease-in-out 0.3s, visibility 0s 0.3s;
+    font-family: "Poppins", sans-serif;
+}
+
+.modal-overlay .container.active .form-box { right: 50%; }
+
+.modal-overlay .form-box.register { visibility: hidden}
+.modal-overlay .container.active .form-box.register { visibility: visible; overflow-y: auto; }
+
+/* Các input-box cơ bản */
+.modal-overlay .input-box {
+    position: relative;
+    margin: 30px 0;
+}
+
+/* Input cơ bản */
+.modal-overlay .input-box input {
+    width: 100%;
+    padding: 13px 50px 13px 20px;
+    background: #eee;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    outline: none;
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+    font-family: "Poppins", sans-serif;
+    transition: border-color 0.3s ease;
+}
+
+/* Placeholder */
+.modal-overlay .input-box input::placeholder {
+    color: #888;
+    font-weight: 400;
+}
+
+/* Icon mặc định */
+.modal-overlay .input-box i {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 20px;
+}
+
+/* Trường hợp invalid: viền đỏ */
+.modal-overlay .input-box.invalid input {
+    border-color: red;
+}
+
+/* Trường hợp valid: viền xanh */
+.modal-overlay .input-box.valid input {
+    border-color: green;
+}
+
+/* Field error hiển thị dưới input-box */
+.field-error {
+    color: red;
+    font-size: 14px;
+    margin-top: 5px;
+    font-family: "Poppins", sans-serif;
+}
+
+/* Tùy chọn: nếu input-box có lỗi, giảm margin-bottom, và thêm khoảng cách cho field-error */
+.modal-overlay .input-box.invalid {
+    margin-bottom: 0;
+}
+.modal-overlay .input-box.invalid + .field-error {
+    margin-bottom: 20px;
+}
+
+/* Forgot Link */
+.modal-overlay .forgot-link { margin: -15px 0 15px; }
+.modal-overlay .forgot-link a {
+    font-size: 14.5px;
+    color: #333;
+    text-decoration: none;
+}
+
+/* Button */
+.modal-overlay .btn {
+    width: 100%;
+    height: 48px;
+    background: #10c048;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, .1);
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #fff;
+    font-weight: 600;
+    font-family: "Poppins", sans-serif;
+}
+
+/* Social Icons */
+.modal-overlay .social-icons {
+    display: flex;
+    justify-content: center;
+    margin: 0 8px;
+}
+
+/* Social Icons Links */
+.modal-overlay .social-icons a {
+    display: inline-flex;
+    padding: 10px;
+    border: 2px solid #ccc;
+    border-radius: 8px;
+    font-size: 24px;
+    color: #333;
+    margin: 0 8px;
+    text-decoration: none;
+}
+
+.modal-overlay .toggle-box {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+}
+
+.modal-overlay .toggle-box::before {
+    content: '';
+    position: absolute;
+    left: -250%;
+    width: 300%;
+    height: 100%;
+    background: #05812c;
+    border-radius: 150px;
+    z-index: 2;
+    transition: 1.8s ease-in-out;
+}
+
+.modal-overlay .container.active .toggle-box::before { left: 50%; }
+
+.modal-overlay .toggle-panel {
+    position: absolute;
+    width: 50%;
+    height: 100%;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 2;
+    transition: .6s ease-in-out;
+    padding: 20px;
+    font-family: "Poppins", sans-serif;
+}
+
+.modal-overlay .toggle-panel.toggle-left { 
+    left: 0;
+    transition-delay: 0.3s;
+}
+.modal-overlay .container.active .toggle-panel.toggle-left {
+    left: -50%;
+    transition-delay: 0.3s;
+}
+
+.modal-overlay .toggle-panel.toggle-right { 
+    right: -50%;
+    transition-delay: 0.3s;
+}
+.modal-overlay .container.active .toggle-panel.toggle-right {
+    right: 0;
+    transition-delay: 0.3s;
+}
+
+.modal-overlay .toggle-panel p { margin-bottom: 20px; }
+
+.modal-overlay .toggle-panel .btn {
+    width: 160px;
+    height: 46px;
+    background: transparent;
+    border: 2px solid #fff;
+    box-shadow: none;
+}
+
+/* Close Button */
+.modal-overlay .close-modal-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 36px;
+    height: 36px;
+    background: rgba(0, 0, 0, 0.1);
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    z-index: 10;
+    transition: all 0.3s ease;
+}
+
+.modal-overlay .close-modal-btn:hover {
+    background: rgba(0, 0, 0, 0.2);
+    transform: rotate(90deg);
+}
+
+/* Responsive */
+@media screen and (max-width: 650px) {
+    .modal-overlay .container { height: calc(100vh - 40px); }
+
+    .modal-overlay .form-box {
+        bottom: 0;
+        width: 100%;
+        height: 70%;
+    }
+
+    .modal-overlay .container.active .form-box {
+        right: 0;
+        bottom: 30%;
+    }
+
+    .modal-overlay .toggle-box::before {
+        left: 0;
+        top: -270%;
+        width: 100%;
+        height: 300%;
+        border-radius: 20vw;
+    }
+
+    .modal-overlay .container.active .toggle-box::before {
+        left: 0;
+        top: 70%;
+    }
+
+    .modal-overlay .container.active .toggle-panel.toggle-left {
+        left: 0;
+        top: -30%;
+    }
+
+    .modal-overlay .toggle-panel { 
+        width: 100%;
+        height: 30%;
+    }
+    .modal-overlay .toggle-panel.toggle-left { top: 0; }
+    .modal-overlay .toggle-panel.toggle-right {
+        right: 0;
+        bottom: -30%;
+    }
+
+    .modal-overlay .container.active .toggle-panel.toggle-right { bottom: 0; }
+}
+
+@media screen and (max-width: 400px) {
+    .modal-overlay .form-box { padding: 20px; }
+    .modal-overlay .toggle-panel h1 { font-size: 30px; }
+}
+
+.modal-overlay .social-text {
+    position: relative;
+    margin: 20px 0;
+    font-size: 14px;
+    color: #777;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.modal-overlay .social-text::before,
+.modal-overlay .social-text::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 30%;
+    height: 1px;
+    background: #e0e0e0;
+}
+
+.modal-overlay .social-text::before {
+    left: 0;
+}
+
+.modal-overlay .social-text::after {
+    right: 0;
+}
+
+/* Cải thiện Social Icons */
+.modal-overlay .social-icons {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin-top: 15px;
+}
+
+.modal-overlay .social-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    font-size: 18px;
+    color: #fff;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.modal-overlay .social-icon:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Facebook icon */
+.modal-overlay .social-icon.facebook {
+    background: linear-gradient(45deg, #3b5998, #4c70ba);
+}
+
+.modal-overlay .social-icon.facebook:hover {
+    background: linear-gradient(45deg, #4c70ba, #3b5998);
+    box-shadow: 0 6px 12px rgba(59, 89, 152, 0.3);
+}
+
+/* Instagram icon */
+.modal-overlay .social-icon.instagram {
+    background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+}
+
+.modal-overlay .social-icon.instagram:hover {
+    background: linear-gradient(45deg, #bc1888, #cc2366, #dc2743, #e6683c, #f09433);
+    box-shadow: 0 6px 12px rgba(220, 39, 67, 0.3);
+}
+
+/* Twitter icon */
+.modal-overlay .social-icon.twitter {
+    background: linear-gradient(45deg, #1da1f2, #0e71c8);
+}
+
+.modal-overlay .social-icon.twitter:hover {
+    background: linear-gradient(45deg, #0e71c8, #1da1f2);
+    box-shadow: 0 6px 12px rgba(29, 161, 242, 0.3);
+}
+
+/* Google icon */
+.modal-overlay .social-icon.google {
+    background: linear-gradient(45deg, #4285f4, #0e71c8);
+}
+
+.modal-overlay .social-icon.google:hover {
+    background: linear-gradient(45deg, #0e71c8, #4285f4);
+    box-shadow: 0 6px 12px rgba(29, 161, 242, 0.3);
+}
+
+.loading-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+.loading-spinner i {
+    font-size: 2rem;
+    color: #333;
+}
+
+/* Ensure form-content is properly displayed when not hidden */
+.modal-overlay .form-content {
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay .form-content.hidden {
+    opacity: 0;
+    pointer-events: none;
+}

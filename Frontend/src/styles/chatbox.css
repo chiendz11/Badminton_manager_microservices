@@ -1,0 +1,285 @@
+/* Chat AI styling */
+.chat-toggle-btn {
+    position: fixed;
+    bottom: 100px; /* Điều chỉnh vị trí cao hơn một chút */
+    right: 30px; /* Căn chỉnh phải cho thẳng hàng với nút scroll-to-top */
+    width: 50px;
+    height: 50px;
+    background-color: #2e7d32;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    z-index: 99;
+    transition: all 0.3s ease;
+    text-align: center;
+    padding: 0; /* Loại bỏ padding có thể gây lệch */
+  }
+  
+  
+  .chat-toggle-btn:hover {
+    background-color: #1b5e20;
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  
+  .ai-chat-container {
+    position: fixed;
+    bottom: 100px;
+    right: 20px;
+    width: 350px;
+    height: 450px;
+    background-color: white;
+    border-radius: 15px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 999;
+    animation: slideUp 0.3s ease;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+  
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(50px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .ai-chat-header {
+    background: linear-gradient(135deg, #2e7d32, #1b5e20);
+    color: white;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  .ai-chat-title {
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+  }
+  
+  .ai-avatar {
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: 0.2px;
+    width: 35px;
+    height: 35px;
+    background-color: #ffcc00;
+    color: #0c8040;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    flex-shrink: 0; /* Ngăn không cho bị bẹp */
+    min-width: 35px; /* Đảm bảo kích thước tối thiểu */
+    position: relative; /* Để có thể định vị pseudo-element */
+    overflow: visible; /* Cho phép hiển thị content bên ngoài */
+  }
+  
+  .ai-avatar::before {
+    content: "";
+    position: absolute;
+    width: 100%;
+    height: 30%;
+    background-color: rgba(255, 255, 255, 0.3);
+    top: 0;
+    left: 0;
+    border-radius: 50% 50% 100% 100%;
+  }
+  
+  .close-chat-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    transition: all 0.2s ease;
+  }
+  
+  .close-chat-btn:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+    transform: rotate(90deg);
+  }
+  
+  .ai-chat-messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background-color: #f8f9fa;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    max-height: 300px;
+    background-image: linear-gradient(rgba(46, 125, 50, 0.03) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(46, 125, 50, 0.03) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+  
+  .ai-message {
+    display: flex;
+    gap: 12px;
+    max-width: 90%;
+    margin-bottom: 10px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  /* Tin nhắn người dùng */
+.user-message {
+    flex-direction: row-reverse;
+    align-self: flex-end;
+  }
+  
+  .user-content {
+    background-color: #0c8040;
+    color: white;
+    border-radius: 18px 18px 4px 18px;
+    border-left: none;
+    border-right: 3px solid #095a30;
+  }
+  
+  /* Hiệu ứng đang nhập */
+  .typing {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    min-width: 60px;
+  }
+  
+  .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #0c8040;
+    margin: 0 3px;
+    opacity: 0.6;
+    animation: typing 1.4s infinite ease-in-out both;
+  }
+  
+  .dot:nth-child(1) {
+    animation-delay: 0s;
+  }
+  
+  .dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  
+  .dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  
+  @keyframes typing {
+    0%, 80%, 100% { transform: scale(0.6); }
+    40% { transform: scale(1); }
+  }
+  
+  /* Tin nhắn lỗi */
+  .error-message {
+    background-color: #fff0f0;
+    border-left: 3px solid #ff6b6b;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .message-content {
+    font-family: 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    letter-spacing: 0.2px;
+    background-color: white;
+    padding: 12px 16px;
+    border-radius: 18px 18px 18px 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    line-height: 1.5;
+    font-size: 14px;
+    border-left: 3px solid #2e7d32;
+    word-wrap: break-word;  /* Đảm bảo văn bản dài được xuống dòng */
+    color: #333; /* Thêm màu chữ rõ ràng */
+    z-index: 2; /* Đảm bảo nằm trên các lớp khác */
+    position: relative; /* Cho phép z-index hoạt động */
+    min-width: 200px; /* Đảm bảo có chiều rộng tối thiểu */
+  }
+  
+  .ai-chat-input {
+    display: flex;
+    padding: 12px 15px;
+    border-top: 1px solid #e0e0e0;
+    background-color: white;
+    align-items: center;
+  }
+  
+  .ai-chat-input input {
+    font-family: 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    letter-spacing: 0.2px;
+    flex: 1;
+    padding: 12px 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 25px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.3s ease;
+    background-color: #f5f5f5;
+    color: #333 !important; /* Đảm bảo màu chữ hiển thị */
+    width: 100%; /* Đảm bảo chiều rộng phù hợp */
+    box-sizing: border-box; /* Đảm bảo padding không làm tăng kích thước */
+    pointer-events: auto !important; /* Đảm bảo có thể tương tác */
+  }
+  
+  .ai-chat-input input:focus {
+    border-color: #2e7d32;
+    background-color: white;
+    box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.1);
+  }
+  
+  .send-message-btn {
+    background-color: #2e7d32;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    margin-left: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  }
+  
+  .send-message-btn:hover {
+    background-color: #1b5e20;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
