@@ -1,6 +1,6 @@
 import { Router } from "express";
 import proxy from "express-http-proxy";
-import { AUTH_SERVICE_URL } from "../config/index.js";
+import { AUTH_SERVICE_URL } from "../configs/env.config.js";
 
 const router = Router();
 

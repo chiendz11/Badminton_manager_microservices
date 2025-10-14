@@ -8,29 +8,34 @@ datasource db {
 }
 
 enum Role {
-  USER  // Vai trò mặc định cho người dùng thông thường
-  ADMIN // Vai trò cho quản trị viên
-  // Bạn có thể thêm các vai trò khác nếu cần, ví dụ: EDITOR, MODERATOR
+  USER
+  ADMIN
 }
 
 model User {
-  id                 String             @id @default(uuid())
-  email              String             @unique
-  username           String             @unique
-  role               Role               @default(USER)
+  id                    String              @id @default(uuid())
+  email                 String              @unique
+  username              String?             @unique
+  role                  Role                @default(USER)
   
-  // Rất quan trọng: Thêm dấu ? để cho phép NULL (optional)
-  passwordHash       String?            
+  passwordHash          String?             
   
-  isActive           Boolean            @default(true)
-  isVerified         Boolean            @default(false)
-  failedLogins       Int                @default(0)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  isActive              Boolean             @default(true)
+  isVerified            Boolean             @default(false)
 
-  externalIdentities ExternalIdentity[] 
-  sessions           Session[]
-  refreshTokens      RefreshToken[]
+  // 💡 TRƯỜNG ĐÃ CÓ: Số lần đăng nhập thất bại liên tiếp (dùng để đếm)
+  failedLoginAttempts   Int                 @default(0) 
+
+  // 💡 TRƯỜNG CẦN THÊM: Thời điểm tài khoản bị khóa cho đến khi nào (nếu bị khóa)
+  lockoutUntil          DateTime?           // Thêm dấu ? để cho phép NULL (optional)
+  
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  externalIdentities    ExternalIdentity[]  
+  sessions              Session[]
+  refreshTokens         RefreshToken[]
+  verificationTokens   VerificationToken[]
 }
 
 model Session {

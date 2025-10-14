@@ -15,105 +15,98 @@ function setAccessToken(token) {
 
 // Hàm đăng ký subscriber khi có nhiều request cùng chờ refresh
 function subscribeTokenRefresh(cb) {
-  refreshSubscribers.push(cb);
+  refreshSubscribers.push(cb);
 }
 
 function onRefreshed(newToken) {
-  refreshSubscribers.forEach(cb => cb(newToken));
-  refreshSubscribers = [];
+  refreshSubscribers.forEach(cb => cb(newToken));
+  refreshSubscribers = [];
 }
 
 const axiosInstance = axios.create({
-  baseURL: API_URL,
-  withCredentials: true, // Gửi cookie (Refresh Token)
+  baseURL: API_URL,
+  withCredentials: true, // Gửi cookie (Refresh Token)
 });
 
 // ----------------------
 // Request Interceptor
 // ----------------------
 axiosInstance.interceptors.request.use(
-  (config) => {
-    // ⚠️ LẤY TOKEN TRỰC TIẾP TỪ BIẾN BỘ NHỚ
-    if (accessToken) { 
-      config.headers.Authorization = `Bearer ${accessToken}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
+  (config) => {
+    // ⚠️ LẤY TOKEN TRỰC TIẾP TỪ BIẾN BỘ NHỚ
+    if (accessToken) { 
+      config.headers.Authorization = `Bearer ${accessToken}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
 );
 
 // ----------------------
-// Response Interceptor
+// Response Interceptor (ĐÃ ĐIỀU CHỈNH)
 // ----------------------
 axiosInstance.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    const status = error.response?.status;
 
-    // Kiểm tra lỗi 401 và chưa retry
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        // Nếu đang refresh thì chờ token mới
-        return new Promise((resolve) => {
-          subscribeTokenRefresh((newToken) => {
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            resolve(axiosInstance(originalRequest));
-          });
-        });
-      }
+    // 💡 PHẦN 1: XỬ LÝ 401 VÀ LÀM MỚI TOKEN
+    if (status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // Nếu đang refresh thì chờ token mới
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((newToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            resolve(axiosInstance(originalRequest));
+          });
+        });
+      }
 
-      originalRequest._retry = true;
-      isRefreshing = true;
+      originalRequest._retry = true;
+      isRefreshing = true;
 
-      try {
-        // Gọi API refresh token (Refresh Token phải được gửi qua Cookie)
-        const res = await axios.post(
-          `${API_URL}/api/auth/tokens`, // Thêm /refresh để chuẩn RESTful hơn
-          {},
-          { withCredentials: true }
-        );
+      try {
+        // Gọi API refresh token
+        const res = await axios.post(
+          `${API_URL}/api/auth/tokens`, 
+          {},
+          { withCredentials: true }
+        );
 
-        const newToken = res.data.accessToken;
-        // 🔑 LƯU TOKEN MỚI VÀO BỘ NHỚ
-        setAccessToken(newToken); 
+        const newToken = res.data.accessToken;
+        setAccessToken(newToken); 
+        onRefreshed(newToken);
 
-        // Cập nhật Authorization header cho các request đang chờ
-        onRefreshed(newToken);
+        // Retry lại request gốc
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return axiosInstance(originalRequest);
 
-        // Retry lại request gốc
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        return axiosInstance(originalRequest);
+      } catch (err) {
+        console.error("Refresh token failed", err);
+        // ⚠️ Không chuyển hướng ở đây! Chỉ cần xóa token cục bộ
+        setAccessToken(null); 
+        // Vẫn reject để request gốc thất bại. AuthContext sẽ xử lý việc chuyển hướng
+        return Promise.reject(err);
+      } finally {
+        isRefreshing = false;
+      }
+    }
 
-      } catch (err) {
-        console.error("Refresh token failed", err);
-        // THẤT BẠI: Refresh Token có vấn đề (hết hạn, bị thu hồi)
-        
-        // ⚠️ Xóa token cũ và chuyển hướng đăng nhập
-        setAccessToken(null); 
-        window.location.href = '/login'; // Chuyển hướng về trang đăng nhập
-        
-        return Promise.reject(err);
-      } finally {
-        isRefreshing = false;
-      }
-    }
-
-    return Promise.reject(error);
-  }
+    return Promise.reject(error);
+  }
 );
 
 // ----------------------
-// HÀM PUBLIC ĐỂ QUẢN LÝ TOKEN TỪ BÊN NGOÀI
+// HÀM PUBLIC ĐỂ QUẢN LÝ TOKEN TỪ BÊN NGOÀI (Giữ nguyên)
 // ----------------------
-// Hàm này được gọi sau khi đăng nhập thành công
 axiosInstance.setAuthToken = (token) => {
-    setAccessToken(token);
+    setAccessToken(token);
 };
 
-// Hàm này được gọi khi đăng xuất
 axiosInstance.clearAuthToken = () => {
-    setAccessToken(null);
-    // Lưu ý: Nếu có session/token trong localStorage/cookie, cần xử lý ở Auth Service
+    setAccessToken(null);
+    // Trong thực tế, bạn cũng sẽ cần gọi API để xóa cookie/refresh token
 };
 
 export default axiosInstance;

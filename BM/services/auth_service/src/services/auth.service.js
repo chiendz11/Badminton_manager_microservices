@@ -1,59 +1,25 @@
-// services/auth_service/src/services/authService.js
+// services/auth_service/src/services/auth.service.js
 
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import { Role } from '@prisma/client';
 import prisma from '../prisma.js';
-import { JWT_SECRET, JWT_EXPIRY, JWT_REFRESH_SECRET, REFRESH_TOKEN_EXPIRY } from '../config/env.config.js'; 
-import { add } from 'date-fns'; 
+import { add, isPast } from 'date-fns'; // Cần thêm isPast
 import { v4 as uuidv4 } from 'uuid';
 import ms from 'ms'; 
-import { sendVerificationEmail } from './email.service.js'; // SỬ DỤNG EMAIL SERVICE MỚI
+import { sendVerificationEmail } from './email.service.js';
+// 💡 IMPORT CÁC SERVICE MỚI
+import { generateAccessToken, createAndStoreRefreshToken } from './token.service.js'; 
+import { handleFailedLoginAttempt, handleSuccessfulLogin } from './login.service.js'; 
+import { isEmailFormat } from '../utils/validations.util.js';
 
 const SALT_ROUNDS = 10;
 
-/**
- * Tạo Access Token (JWT)
- */
-const generateAccessToken = (user) => {
-    return jwt.sign(
-        { userId: user.id, role: user.role, type: 'access' },
-        JWT_SECRET,
-        { expiresIn: JWT_EXPIRY }
-    );
-};
 
-/**
- * Tạo Refresh Token (JWT) và lưu vào DB
- */
-const createAndStoreRefreshToken = async (userId) => {
-    // Thời gian hết hạn tính bằng miliseconds
-    const expiryMilliseconds = ms(REFRESH_TOKEN_EXPIRY);
-    const expiresAt = new Date(Date.now() + expiryMilliseconds);
-
-    // Dùng JWT để tạo Refresh Token. Payload chỉ chứa userId và type.
-    const token = jwt.sign(
-        { userId, type: 'refresh' },
-        JWT_REFRESH_SECRET,
-        { expiresIn: REFRESH_TOKEN_EXPIRY }
-    );
-
-    // Lưu token (hash hoặc nguyên bản) và thời gian hết hạn vào DB
-    await prisma.refreshToken.create({
-        data: {
-            userId,
-            token, // Lưu token nguyên bản (dễ tìm kiếm)
-            expiresAt,
-        }
-    });
-    return token;
-};
-
-// ... (Hàm registerUser không đổi) ...
+// --- (Hàm registerUser không đổi) ---
 export const registerUser = async (data) => {
     const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
     
-    // Bỏ qua confirmPassword (đã được Joi xử lý)
+    // ... logic tạo user, token và gửi email (giữ nguyên) ...
     const newUser = await prisma.user.create({
         data: {
             email: data.email,
@@ -64,9 +30,8 @@ export const registerUser = async (data) => {
         select: { id: true, email: true, username: true, role: true, createdAt: true }
     });
 
-    // 1. Tạo Verification Token
     const verificationToken = uuidv4(); 
-    const expiresAt = new Date(Date.now() + ms('24h')); // Hết hạn sau 24 giờ
+    const expiresAt = new Date(Date.now() + ms('24h')); 
 
     await prisma.verificationToken.create({
         data: {
@@ -75,36 +40,71 @@ export const registerUser = async (data) => {
             expiresAt: expiresAt,
         }
     });
-
-    // 2. Gửi email xác minh
-    await sendVerificationEmail(newUser.email, verificationToken); // Dùng await để bắt lỗi gửi email
-
+    await sendVerificationEmail(newUser.email, verificationToken);
     return newUser;
 };
+// ------------------------------------
 
 
-export const authenticateUser = async (email, password, req) => {
-    const user = await prisma.user.findUnique({ where: { email } });
+/**
+ * Logic Đăng nhập chính, sử dụng identifier (email HOẶC username)
+ */
+export const authenticateUser = async (identifier, password, req) => {
+    let user;
 
+    // 1. Tìm kiếm người dùng linh hoạt
+    const isEmail = isEmailFormat(identifier);
+    if (isEmail) {
+        user = await prisma.user.findUnique({ where: { email: identifier } });
+    } else {
+        user = await prisma.user.findUnique({ where: { username: identifier } });
+    }
+
+    // 2. Kiểm tra tồn tại và khóa tài khoản
     if (!user || !user.passwordHash) {
-        throw new Error("Thông tin đăng nhập không chính xác.");
+        // Ném lỗi 400
+        const error = new Error("Thông tin đăng nhập không chính xác.");
+        throw Object.assign(error, { statusCode: 400 }); 
     }
+    
+    // 💡 KIỂM TRA KHÓA TÀI KHOẢN (Account Lockout)
+    if (user.lockoutUntil && isPast(user.lockoutUntil)) {
+        await handleSuccessfulLogin(user.id);
+    } else if (user.lockoutUntil && !isPast(user.lockoutUntil)) {
+        // Ném lỗi 403
+        const error = new Error("Tài khoản của bạn đang bị khóa tạm thời do nhập sai mật khẩu quá nhiều lần.");
+        throw Object.assign(error, { statusCode: 403 }); 
+    }
+
     if (!user.isActive) {
-        throw new Error("Tài khoản của bạn đã bị vô hiệu hóa.");
+        // Ném lỗi 403
+        const error = new Error("Tài khoản của bạn đã bị vô hiệu hóa.");
+        throw Object.assign(error, { statusCode: 403 }); 
     }
-
+    if (!user.isVerified) {
+        // Ném lỗi 403
+        const error = new Error("Vui lòng xác minh email của bạn trước khi đăng nhập.");
+        throw Object.assign(error, { statusCode: 403 }); 
+    }
+    
+    // 3. So sánh mật khẩu
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+
     if (!isPasswordValid) {
-        // TODO: Cập nhật failedLogins tại đây
-        throw new Error("Thông tin đăng nhập không chính xác.");
+        await handleFailedLoginAttempt(user.id);
+        // Ném lỗi 400
+        const error = new Error("Thông tin đăng nhập không chính xác.");
+        throw Object.assign(error, { statusCode: 400 }); 
     }
 
-    // Tạo Tokens
+    // 4. Đăng nhập thành công
+    await handleSuccessfulLogin(user.id);
+
+    // Tạo Tokens và Session
     const accessToken = generateAccessToken(user);
     const refreshToken = await createAndStoreRefreshToken(user.id);
     
-    // Tạo Session
-    const sessionExpiresAt = add(new Date(), { days: 30 }); // Session 30 ngày
+    const sessionExpiresAt = add(new Date(), { days: 30 });
     await prisma.session.create({
         data: {
             userId: user.id,
@@ -117,54 +117,18 @@ export const authenticateUser = async (email, password, req) => {
     return {
         accessToken,
         refreshToken,
-        user: { id: user.id, username: user.username, email: user.email, role: user.role }
+        user: { id: user.id, username: user.username, email: user.email, role: user.role, isVerified: user.isVerified }
     };
 };
 
 
-export const refreshTokens = async (token) => {
-    let payload;
-    try {
-        // Xác thực token bằng secret dành cho Refresh Token
-        payload = jwt.verify(token, JWT_REFRESH_SECRET);
-    } catch (e) {
-        throw new Error("Refresh token không hợp lệ hoặc bị giả mạo.");
-    }
-
-    // 1. Tìm kiếm token trong DB (đảm bảo token chưa bị thu hồi)
-    const refreshTokenRecord = await prisma.refreshToken.findUnique({
-        where: { token },
-        include: { user: true }
-    });
-
-    if (!refreshTokenRecord || refreshTokenRecord.expiresAt < new Date()) {
-        // Xóa token hết hạn khỏi DB (Cleanup)
-        if(refreshTokenRecord) {
-            await prisma.refreshToken.delete({ where: { id: refreshTokenRecord.id } });
-        }
-        throw new Error("Refresh token đã hết hạn hoặc không tồn tại.");
-    }
-
-    const user = refreshTokenRecord.user;
-
-    // 2. Tạo Access Token MỚI
-    const newAccessToken = generateAccessToken(user);
-
-    // 3. Xoay vòng Refresh Token (Rotation): Tạo token mới và xóa token cũ
-    await prisma.refreshToken.delete({ where: { id: refreshTokenRecord.id } });
-    const newRefreshToken = await createAndStoreRefreshToken(user.id);
-
-    return {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-        user: { id: user.id, email: user.email, role: user.role }
-    };
-};
+// --- (Các hàm refreshTokens, verifyUserEmail, logoutUser được di chuyển hoặc giữ nguyên) ---
 
 /**
  * Logic xác minh email
  */
 export const verifyUserEmail = async (token) => {
+    // ... (Logic giữ nguyên) ...
     const tokenRecord = await prisma.verificationToken.findFirst({
         where: { token: token },
         include: { user: true }
@@ -173,13 +137,11 @@ export const verifyUserEmail = async (token) => {
     if (!tokenRecord) {
         throw new Error("Mã xác minh không tồn tại.");
     }
-    
     if (tokenRecord.expiresAt < new Date()) {
         await prisma.verificationToken.delete({ where: { id: tokenRecord.id } });
         throw new Error("Mã xác minh đã hết hạn.");
     }
 
-    // Thực hiện transaction: Cập nhật User và xóa Token
     await prisma.$transaction([
         prisma.user.update({
             where: { id: tokenRecord.userId },
@@ -192,22 +154,12 @@ export const verifyUserEmail = async (token) => {
 };
 
 /**
- * Xử lý việc đăng xuất: Xóa Refresh Token và Session tương ứng.
- * @param {string} refreshToken - Refresh Token được gửi từ client.
+ * Xử lý việc đăng xuất: Xóa Refresh Token.
  */
 export const logoutUser = async (refreshToken) => {
-    // 1. Tìm và xóa Refresh Token (thu hồi quyền truy cập)
-    const tokenRecord = await prisma.refreshToken.deleteMany({
-        where: { token: refreshToken } // Dùng deleteMany vì token là duy nhất, nhưng an toàn hơn
+    // ... (Logic giữ nguyên) ...
+    await prisma.refreshToken.deleteMany({
+        where: { token: refreshToken }
     });
-
-    if (tokenRecord.count === 0) {
-        // Có thể không cần thông báo lỗi nếu xóa thứ không tồn tại
-        console.log("[LOGOUT] Refresh token không tồn tại.");
-    }
-    
-    // TRONG THỰC TẾ: Bạn cũng có thể xóa Session nếu muốn quản lý các phiên đã đăng nhập
-    // (Tuy nhiên, việc xóa Refresh Token đã là đủ để thu hồi quyền)
-    
     return true;
 };

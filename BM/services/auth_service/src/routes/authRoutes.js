@@ -34,6 +34,6 @@ authRouter.delete('/sessions', deleteSession);
 // -----------------------------------------------------------------
 
 // POST /tokens: Làm mới Access Token (sử dụng Refresh Token)
-authRouter.post('/tokens', createNewToken); // Không cần validation body nếu lấy từ cookie
+authRouter.post('/refresh_tokens', createNewToken); // Không cần validation body nếu lấy từ cookie
 
 export default authRouter;

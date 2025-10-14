@@ -1,13 +1,12 @@
-// services/auth_service/src/index.js
-
+// services/user_service/server.js
 import express from "express";
-import authRouter from "./routes/authRoutes.js";
+import userRouter from "./routes/authRoutes.js";
 // Cập nhật import từ file config mới
 import { PORT } from "./config/env.config.js"; 
 import helmet from "helmet";
 
 const app = express();
-const AUTH_PORT = PORT; 
+const USER_PORT = PORT; 
 
 // Global middleware
 app.use(helmet());
@@ -16,7 +15,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Routes
-app.use("/api", authRouter);
+app.use("/api", userRouter);
 
 // Health check
 app.get("/", (req, res) => {
@@ -30,8 +29,9 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(AUTH_PORT, () => {
+app.listen(USER_PORT, () => {
     console.log("-------------------------------------------------");
-    console.log(`✅ Auth Service running at http://localhost:${AUTH_PORT}`);
+    console.log(`✅ User Service running at http://localhost:${USER_PORT}`);
     console.log("-------------------------------------------------");
 });
+

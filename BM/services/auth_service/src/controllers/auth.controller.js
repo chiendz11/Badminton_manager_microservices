@@ -1,6 +1,7 @@
 // services/auth_service/src/controllers/authController.js
 
-import { registerUser, authenticateUser, refreshTokens, verifyUserEmail, logoutUser } from '../services/auth.service.js';
+import { registerUser, authenticateUser, verifyUserEmail, logoutUser } from '../services/auth.service.js';
+import { refreshTokens } from '../services/token.service.js';
 import { Prisma } from '@prisma/client';
 import ms from 'ms'; // Cần thiết cho maxAge
 
@@ -52,11 +53,15 @@ export const verifyUser = async (req, res, next) => {
 // -----------------------------------------------------------------
 
 // POST /sessions
+// Cần import: authenticateUser, loginSchema (từ schema file), ms (từ 'ms'), isEmail, handleFailedLoginAttempt
+
 export const createSession = async (req, res, next) => {
-    const { email, password } = req.body;
+    // Giả sử body chứa 'identifier' (email HOẶC username) và 'password'
+    const { identifier, password } = req.body; 
+
+
     try {
-        // Bỏ qua kiểm tra isVerified ở đây vì đã được tích hợp trong authenticateUser
-        const result = await authenticateUser(email, password, req); 
+        const result = await authenticateUser(identifier, password, req); 
 
         res.cookie('refreshToken', result.refreshToken, { 
             httpOnly: true, 
@@ -71,10 +76,14 @@ export const createSession = async (req, res, next) => {
             user: result.user
         });
     } catch (error) {
-        if (error.message.includes("không chính xác") || error.message.includes("vô hiệu hóa") || error.message.includes("xác minh email")) {
-             return res.status(401).json({ message: error.message });
+        // 💡 XỬ LÝ LỖI BẢO MẬT/XÁC THỰC
+        if (error.statusCode === 400 || error.statusCode === 403) {
+            // ✅ Xử lý lỗi xác thực cụ thể
+            return res.status(error.statusCode).json({ message: error.message }); 
         }
-        next(error);
+        
+        // Chuyển các lỗi khác (500, lỗi database,...) cho middleware xử lý lỗi chung
+        next(error);   
     }
 };
 

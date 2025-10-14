@@ -1,0 +1,202 @@
+openapi: 3.0.3
+info:
+  title: Auth Service API
+  description: Dịch vụ xác thực và quản lý người dùng (Đăng ký, Đăng nhập, Đăng xuất, Làm mới Token).
+  version: v1
+servers:
+  - url: /api/auth
+    description: Base URL cho Auth Service
+paths:
+  # -----------------------------------------------------------------
+  # 1. /users (Tạo tài khoản)
+  # -----------------------------------------------------------------
+  /users:
+    post:
+      tags:
+        - User Management
+      summary: Đăng ký người dùng mới
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistrationRequest'
+      responses:
+        '202':
+          description: Đăng ký thành công. Vui lòng kiểm tra email để xác minh.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '409':
+          description: Xung đột dữ liệu (Email hoặc Tên đăng nhập đã tồn tại).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # -----------------------------------------------------------------
+  # 2. Xác minh Email
+  # -----------------------------------------------------------------
+  /users/verification-tokens/{token}:
+    get:
+      tags:
+        - User Management
+      summary: Xác minh địa chỉ email người dùng
+      operationId: verifyEmail
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            description: Mã xác minh được gửi qua email.
+      responses:
+        '200':
+          description: Xác minh thành công. Trả về HTML thông báo.
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Lỗi xác minh (Thiếu token hoặc token không hợp lệ/hết hạn).
+          content:
+            text/html:
+              schema:
+                type: string
+
+  # -----------------------------------------------------------------
+  # 3. /sessions (Đăng nhập/Đăng xuất)
+  # -----------------------------------------------------------------
+  /sessions:
+    post:
+      tags:
+        - Authentication
+      summary: Đăng nhập và tạo phiên làm việc (Session)
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Đăng nhập thành công. Access Token trả về, Refresh Token đặt trong Cookie.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Lỗi cú pháp hoặc thiếu thông tin.
+        '403':
+          description: Lỗi xác thực (Mật khẩu sai, tài khoản chưa xác minh, tài khoản bị khóa).
+
+    delete:
+      tags:
+        - Authentication
+      summary: Đăng xuất và kết thúc phiên làm việc
+      operationId: deleteSession
+      responses:
+        '200':
+          description: Đăng xuất thành công. Cookie refreshToken đã được xóa.
+
+  # -----------------------------------------------------------------
+  # 4. /tokens (Làm mới token - Theo chuẩn OAuth)
+  # -----------------------------------------------------------------
+  /tokens:
+    post:
+      tags:
+        - Authentication
+      summary: Làm mới Access Token bằng Refresh Token
+      operationId: createNewToken
+      # Refresh Token được mong đợi lấy từ Cookie (header)
+      responses:
+        '200':
+          description: Token đã được làm mới thành công.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Thiếu Refresh Token (hoặc Token không hợp lệ/hết hạn).
+
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID người dùng (UUID).
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        isVerified:
+          type: boolean
+          description: Trạng thái xác minh email.
+        role:
+          type: string
+          enum: [USER, ADMIN]
+      example:
+        id: "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+        email: user@example.com
+        username: john_doe
+        isVerified: true
+        role: USER
+
+    UserRegistrationRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        username:
+          type: string
+          nullable: true
+          description: Tùy chọn, nếu không có thì null.
+
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          description: Email HOẶC Tên đăng nhập.
+        password:
+          type: string
+          format: password
+
+    AuthResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        accessToken:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      example:
+        message: Email hoặc Mật khẩu không chính xác.

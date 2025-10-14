@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/login.css';
-import { loginUser, registerUser } from '../apiV2/authService.js';
+import { loginUser, registerUser } from '../apiV2/auth.api.js';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 import { forgotPasswordByEmailSimpleApi } from '../apis/users';
 
 const LoginModal = ({ isOpen, onClose }) => {
   const [activeMode, setActiveMode] = useState("login");
   const modalRef = useRef(null);
-  const { login } = useContext(AuthContext);
+  const { refreshUser } = useContext(AuthContext);
   const navigate = useNavigate();
 
   // State cho form đăng nhập
-  const [loginUsername, setLoginUsername] = useState('');
+  const [identifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState(''); // Sẽ chứa thông báo lỗi chi tiết
   const [isLoginLoading, setIsLoginLoading] = useState(false);
@@ -80,9 +80,9 @@ const LoginModal = ({ isOpen, onClose }) => {
     setLoginError(''); // Clear error before new attempt
     setIsLoginLoading(true);
     try {
-      const result = await loginUser({ username: loginUsername, password: loginPassword });
+      const result = await loginUser({ identifier: identifier, password: loginPassword });
       console.log('Đăng nhập thành công:', result);
-      login(result.user);
+      await refreshUser(); // Cập nhật thông tin user trong context
       navigate('/');
       onClose();
     } catch (error) {
@@ -194,9 +194,9 @@ const LoginModal = ({ isOpen, onClose }) => {
                 <input
                   id="login-username"
                   type="text"
-                  placeholder="Username"
-                  value={loginUsername}
-                  onChange={(e) => setLoginUsername(e.target.value)}
+                  placeholder="Nhâp email hoặc tên đăng nhập"
+                  value={identifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
                 />
                 <i className="bx bxs-user"></i>
               </div>
@@ -204,7 +204,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                 <input
                   id="login-password"
                   type="password"
-                  placeholder="Password"
+                  placeholder="Nhập mật khẩu"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                 />

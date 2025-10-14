@@ -14,19 +14,19 @@ export const registerUser = async (userData) => {
 
 
 // Đăng nhập người dùng
-export const loginUser = async ({ username, password }) => {
+export const loginUser = async ({ identifier, password }) => {
   try {
     // Gửi request đăng nhập trước
     const response = await axiosInstance.post('/api/auth/sessions', {
-      username,
+      identifier,
       password
     });
     const data = response.data;
     // Lưu token vào bộ nhớ của axiosInstance
-    axiosInstance.setAuthToken(data.accessToken); 
+    axiosInstance.setAuthToken(data.accessToken);
 
-    console.log("Login successful, fetching new CSRF token...");
-
+    console.log("Login successful:", data);
+    return data;
   } catch (error) {
     console.error("Error logging in:", error.response?.data || error.message);
     throw error;
@@ -36,10 +36,11 @@ export const loginUser = async ({ username, password }) => {
 export const logoutUser = async () => {
   try {
     await axiosInstance.delete('/api/auth/sessions');
-    
+    axiosInstance.clearAuthToken();
     console.log("Logout successful");
   } catch (error) {
     console.error("Error logging out:", error.response?.data || error.message);
+    axiosInstance.clearAuthToken();
     throw error;
   }
 };
