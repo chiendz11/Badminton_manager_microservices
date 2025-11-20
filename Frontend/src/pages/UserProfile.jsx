@@ -5,13 +5,24 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import ModalConfirmation from '../components/ModalConfirmation';
 import ProfileInfoTab from '../components/ProfileInfoTab';
-import StatsTab from '../components/StatusTab';
+import StatsTab from '../components/StatusTab'; // Sửa: Giả sử đây là 'StatsTab'
 import HistoryTab from '../components/HistoryTab';
 import { getBookingHistory, cancelBooking, deleteBooking } from '../apis/booking';
-import { getDetailedBookingStats, getChartData, fetchUserInfo, updateUserInfo } from '../apis/users';
+
+// 💡 IMPORT API CHO USER (Tách biệt)
+// 1. fetchUserInfo: Lấy thông tin (GET /me)
+// 2. updateUserInfo: Cập nhật JSON (PATCH /me)
+// 3. updateUserPassword: Cập nhật mật khẩu (PUT /me/password - giả định)
+import { getDetailedBookingStats, getChartData } from '../apis/users';
+import { updateMyProfile } from '../apiV2/user_service/rest/users.api';
+import { updateUserPassword } from '../apiV2/auth_service/auth.api';
+import { fetchUserInfo } from '../apiV2/user_service/rest/users.api';
+// 💡 LƯU Ý:
+// 💡 ProfileInfoTab sẽ tự import 'updateAvatar' (PUT /me/avatar)
+
 import '../styles/UserProfile.css';
 
-// Helper functions
+// Helper functions (Giữ nguyên)
 const getStatusClass = (status) => {
   switch (status) {
     case 'paid': return 'status-completed';
@@ -21,6 +32,8 @@ const getStatusClass = (status) => {
     default: return '';
   }
 };
+
+
 
 const getStatusText = (status) => {
   switch (status) {
@@ -60,22 +73,16 @@ const UserProfile = () => {
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
-  const [isUpdating, setIsUpdating] = useState(false); // Loading state for updates
+  const [isUpdating, setIsUpdating] = useState(false); // 💡 Loading state for JSON updates
   const navigate = useNavigate();
 
   const centerName = localStorage.getItem("centerName") || "Tên Trung Tâm Mặc Định";
   const slotGroupsFromLS = JSON.parse(localStorage.getItem("slotGroups") || "[]");
   const totalAmountLS = Number(localStorage.getItem("totalAmount")) || 0;
 
-  // Định nghĩa base URL của backend
-  const BACKEND_URL = "http://localhost:3000";
-
-  // Xử lý đường dẫn ảnh: thêm domain của backend nếu cần
-  const getAvatarImagePath = (path) => {
-    if (!path) return "/default-avatar.png";
-    if (path.startsWith("http")) return path;
-    return `${BACKEND_URL}${path}`;
-  };
+  // 💡 ĐÃ XÓA: const BACKEND_URL
+  // 💡 ĐÃ XÓA: const getAvatarImagePath
+  // (Mô hình Hybrid: Backend luôn trả về URL đầy đủ (avatar_url))
 
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab);
@@ -104,6 +111,7 @@ const UserProfile = () => {
     fetchHistory();
   }, [user]);
 
+  // (Giữ nguyên các useEffect khác: fetchStats, fetchChart, timer, popstate)
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -147,75 +155,97 @@ const UserProfile = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Lắng nghe sự kiện "Quay lại" trên trình duyệt
   useEffect(() => {
     window.history.pushState(null, null, window.location.href);
-
     const handlePopState = (event) => {
       event.preventDefault();
       navigate('/', { replace: true });
     };
-
     window.addEventListener('popstate', handlePopState);
-
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
   }, [navigate]);
+  // (Kết thúc giữ nguyên)
 
   const handleChangePassword = async () => {
+    // 1. Kiểm tra ở Client (vẫn cần thiết để có phản hồi nhanh)
     if (newPassword !== confirmPassword) {
       alert("Mật khẩu xác nhận không khớp!");
       return;
     }
+
+    setIsUpdating(true);
     try {
-      const data = await updateUserPassword({ oldPassword, newPassword });
+      
+      // 2. 💡 SỬA LỖI:
+      // Truyền cả 3 trường vào hàm API
+      const data = await updateUserPassword({ 
+        oldPassword, 
+        newPassword, 
+        confirmPassword // <-- Thêm trường này
+      });
+
+      // 3. Xử lý response (Joi đã pass)
       if (data.success) {
         alert("Đổi mật khẩu thành công!");
         setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
+        setEditMode('profile'); // Quay về tab profile
       } else {
+        // Lỗi logic từ Service (ví dụ: mật khẩu cũ sai)
         alert("Đổi mật khẩu thất bại: " + data.message);
       }
     } catch (error) {
-      alert("Lỗi khi đổi mật khẩu: " + error.message);
+      // 4. Bắt lỗi (bao gồm cả lỗi từ Joi)
+      // error.response.data.message sẽ là "Mật khẩu xác nhận là bắt buộc."
+      alert("Lỗi khi đổi mật khẩu: " + (error.response?.data?.message || error.message));
+    } finally {
+      setIsUpdating(false);
     }
   };
 
+  // 💡 HÀM ĐÃ SỬA (Best Practice):
+  // Hàm này CHỈ chịu trách nhiệm cập nhật dữ liệu JSON (name, phone, email).
+  // Việc cập nhật AVATAR sẽ do <ProfileInfoTab> tự xử lý (gọi API updateAvatar).
   const handleUpdateField = async (field, newValue) => {
-    // Validate non-empty input
     if (!newValue || (typeof newValue === 'string' && newValue.trim() === '')) {
-      alert(`Vui lòng nhập ${field === 'avatar_image_path' ? 'hình ảnh' : field} trước khi cập nhật!`);
+      alert(`Vui lòng nhập ${field} trước khi cập nhật!`);
       return;
     }
 
-    setIsUpdating(true); // Start loading
+    setIsUpdating(true);
     try {
-      let payload;
-      if (field === "avatar_image_path" && newValue instanceof File) {
-        payload = new FormData();
-        payload.append(field, newValue);
-      } else {
-        payload = { [field]: newValue };
-      }
+      const payload = { [field]: newValue };
+      
+      // 1. Gọi API (API này trả về userObject)
+      const updatedUser = await updateMyProfile(payload);
+      console.log("Update profile response:", updatedUser); // (Tên biến rõ nghĩa hơn)
 
-      const data = await updateUserInfo(payload);
-      if (data.success) {
-        setUser((prevUser) => ({ ...prevUser, [field]: data.user[field] }));
+      // 2. 💡 SỬA LỖI:
+      // Kiểm tra xem 'updatedUser' có phải là một đối tượng user hợp lệ không
+      // (ví dụ: bằng cách kiểm tra 1 trường ID)
+      if (updatedUser && updatedUser.userId) { 
+        
+        // 3. 💡 SỬA LỖI: Set 'updatedUser' (chính là data) vào Context
+        setUser(updatedUser); 
         alert("Cập nhật thông tin thành công!");
+        
       } else {
-        alert("Cập nhật thất bại: " + data.message);
+        // (Trường hợp này chỉ xảy ra nếu API trả về lỗi)
+        alert("Cập nhật thất bại: " + (updatedUser.message || "Lỗi không xác định"));
       }
     } catch (error) {
-      const errorMessage = error.message || "Lỗi không xác định khi cập nhật!";
+      const errorMessage = error.response?.data?.message || error.message || "Lỗi không xác định khi cập nhật!";
       alert("Lỗi cập nhật: " + errorMessage);
-      throw error; // Throw error for ProfileInfoTab to handle
     } finally {
-      setIsUpdating(false); // Stop loading
-    }
+      setIsUpdating(false);
+    } 
   };
 
+
+  // (Giữ nguyên các hàm xử lý modal và filter)
   const promptCancelBooking = (orderId) => {
     setActionConfig({
       type: 'cancel',
@@ -326,6 +356,8 @@ const UserProfile = () => {
     });
     setFilteredHistory(filtered);
   };
+  // (Kết thúc giữ nguyên)
+
 
   if (isLoading) {
     return (
@@ -342,6 +374,7 @@ const UserProfile = () => {
     <>
       <Header />
       <div className="relative profile-container">
+        {/* 💡 Lớp phủ loading này giờ chỉ kích hoạt khi cập nhật JSON hoặc đổi mật khẩu */}
         {isUpdating && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-50 z-50">
             <div className="w-12 h-12 border-4 border-t-4 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -352,11 +385,13 @@ const UserProfile = () => {
           <div className="header-content">
             <div className="avatar-container">
               <img
-                src={getAvatarImagePath(user?.avatar_image_path)}
+                // 💡 SỬA: Sử dụng 'avatar_url' (Mô hình Hybrid)
+                src={user?.avatar_url || "/default-avatar.png"}
                 alt="Avatar"
                 className="user-avatar"
                 onError={(e) => {
-                  console.log("Lỗi tải ảnh trong UserProfile:", user?.avatar_image_path);
+                  // 💡 SỬA: Log đúng field
+                  console.log("Lỗi tải ảnh trong UserProfile:", user?.avatar_url);
                   e.target.onerror = null;
                   e.target.src = "/default-avatar.png";
                 }}
@@ -385,11 +420,19 @@ const UserProfile = () => {
               </div>
               <div className="member-since">
                 <span>Thành viên từ</span>
-                <strong>{new Date(user?.registration_date).toLocaleDateString('vi-VN')}</strong>
+                {/* 💡 SỬA: Thêm kiểm tra 'user?.registration_date' trước khi new Date() */}
+                <strong>
+                  {user?.registration_date 
+                    ? new Date(user.registration_date).toLocaleDateString('vi-VN')
+                    : 'N/A'
+                  }
+                </strong>
               </div>
             </div>
           </div>
         </div>
+        
+        {/* (Phần Tabs và Content giữ nguyên) */}
         <div className="profile-tabs">
           <button
             className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`}
@@ -432,7 +475,8 @@ const UserProfile = () => {
               showConfirmPassword={showConfirmPassword}
               setShowConfirmPassword={setShowConfirmPassword}
               handleChangePassword={handleChangePassword}
-              handleUpdateField={handleUpdateField}
+              // 💡 Prop này giờ chỉ dùng cho (name, phone, email)
+              handleUpdateField={handleUpdateField} 
               bookingHistory={bookingHistory}
               centerName={centerName}
               slotGroupsFromLS={slotGroupsFromLS}

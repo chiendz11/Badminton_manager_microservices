@@ -1,32 +1,111 @@
-import axios from 'axios';
+import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:8080";
+
+// 🔑 BIẾN LƯU TRỮ TRONG BỘ NHỚ (IN-MEMORY)
+let accessToken = null; 
+
+let isRefreshing = false;
+let refreshSubscribers = [];
+
+// Hàm cập nhật token trong bộ nhớ
+function setAccessToken(token) {
+  accessToken = token;
+}
+
+// Hàm đăng ký subscriber khi có nhiều request cùng chờ refresh
+function subscribeTokenRefresh(cb) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(newToken) {
+  refreshSubscribers.forEach(cb => cb(newToken));
+  refreshSubscribers = [];
+}
 
 const axiosInstance = axios.create({
-  baseURL: API_URL,
-  withCredentials: true, // Cho phép gửi cookie cùng với request
+  baseURL: API_URL,
+  withCredentials: true, // Gửi cookie (Refresh Token)
 });
 
-// Interceptor để thêm CSRF token vào header cho các request POST/PUT/DELETE
+// ----------------------
+// Request Interceptor
+// ----------------------
 axiosInstance.interceptors.request.use(
-  (config) => {
-    // Chỉ thêm CSRF token cho các phương thức cần thiết (POST, PUT, DELETE, PATCH)
-    // PATCH cũng là một phương thức thay đổi dữ liệu, thường cần CSRF.
-    if (['post', 'put', 'delete', 'patch'].includes(config.method.toLowerCase())) {
-      const csrfToken = localStorage.getItem('csrfToken'); // Lấy CSRF token từ localStorage
-      if (csrfToken) {
-        config.headers['X-CSRF-Token'] = csrfToken; // Thêm vào header
-      } else {
-        // Cảnh báo nếu token không tồn tại, nhưng vẫn cho phép request đi tiếp.
-        // Tùy thuộc vào logic backend, request có thể bị từ chối nếu thiếu token.
-        console.warn('CSRF token không tồn tại trong localStorage, request có thể bị từ chối bởi server.');
-      }
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (config) => {
+    // ⚠️ LẤY TOKEN TRỰC TIẾP TỪ BIẾN BỘ NHỚ
+    if (accessToken) { 
+      config.headers.Authorization = `Bearer ${accessToken}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
 );
+
+// ----------------------
+// Response Interceptor (ĐÃ ĐIỀU CHỈNH)
+// ----------------------
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    const status = error.response?.status;
+
+    // 💡 PHẦN 1: XỬ LÝ 401 VÀ LÀM MỚI TOKEN
+    if (status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // Nếu đang refresh thì chờ token mới
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((newToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            resolve(axiosInstance(originalRequest));
+          });
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        // Gọi API refresh token
+        const res = await axios.post(
+          `${API_URL}/api/auth/refresh-token`, 
+          {},
+          { withCredentials: true }
+        );
+
+        const newToken = res.data.accessToken;
+        setAccessToken(newToken); 
+        onRefreshed(newToken);  
+        // Retry lại request gốc
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return axiosInstance(originalRequest);
+
+      } catch (err) {
+        console.error("Refresh token failed", err);
+        // ⚠️ Không chuyển hướng ở đây! Chỉ cần xóa token cục bộ
+        setAccessToken(null); 
+        // Vẫn reject để request gốc thất bại. AuthContext sẽ xử lý việc chuyển hướng
+        return Promise.reject(err);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+// ----------------------
+// HÀM PUBLIC ĐỂ QUẢN LÝ TOKEN TỪ BÊN NGOÀI (Giữ nguyên)
+// ----------------------
+axiosInstance.setAuthToken = (token) => {
+    setAccessToken(token);
+};
+
+axiosInstance.clearAuthToken = () => {
+    setAccessToken(null);
+    // Trong thực tế, bạn cũng sẽ cần gọi API để xóa cookie/refresh token
+};
 
 export default axiosInstance;

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service # 1. Đây là tên nội bộ (DNS name)
+spec:
+  selector:
+    app: auth-service # 2. Phải khớp với label của Deployment
+  ports:
+    - protocol: TCP
+      port: 80         # 3. Địa chỉ nội bộ sẽ lắng nghe ở cổng 80
+      targetPort: 8081 # 4. Chuyển tiếp request đến cổng 8081 của Pod

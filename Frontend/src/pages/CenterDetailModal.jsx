@@ -1,24 +1,39 @@
 import React, { useState, useEffect, useRef, useContext } from "react";
 import "../styles/centerDetailModal.css";
-import { getCenterInfoById } from "../apis/centers"; // API lấy thông tin center
-import { submitRating } from "../apis/users"; // API đánh giá
+import { getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api"; // API V2 GraphQL
+import { submitRating } from "../apis/users"; // Legacy API
 import { AuthContext } from "../contexts/AuthContext";
-import { getCommentsForCenter } from "../apis/rating";
+import { getCommentsForCenter } from "../apis/rating"; // Legacy API
 
 const CenterDetailModal = ({ center, isOpen, onClose }) => {
   const modalRef = useRef(null);
+  
+  // State to hold the full details. Initialize with props (which is likely summary data)
+  const [centerDetails, setCenterDetails] = useState(center || {});
   const [additionalImages, setAdditionalImages] = useState([]);
+  
   const [reviewContent, setReviewContent] = useState("");
   const [selectedRating, setSelectedRating] = useState(5);
   const [hoverRating, setHoverRating] = useState(0);
   const [reviews, setReviews] = useState([]);
-  const [showConfirmModal, setShowConfirmModal] = useState(false); // Modal xác nhận
-  const [showErrorModal, setShowErrorModal] = useState(false); // Modal thông báo lỗi
-  const [errorMessage, setErrorMessage] = useState(""); // Thông báo lỗi
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const { user } = useContext(AuthContext);
   const userId = user?._id;
 
-  // Prevent background scrolling when modal is open
+  // Update centerDetails when prop changes
+  useEffect(() => {
+    if (center) {
+      setCenterDetails(center);
+      // Nếu props đã có danh sách ảnh (từ logic mới của Centers.jsx), set luôn để hiển thị ngay
+      if (center.imageUrlList) {
+          setAdditionalImages(center.imageUrlList);
+      }
+    }
+  }, [center]);
+
+  // Prevent background scrolling
   useEffect(() => {
     document.body.style.overflow = isOpen ? "hidden" : "auto";
     return () => {
@@ -26,7 +41,7 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
     };
   }, [isOpen]);
 
-  // Close modal on Escape key press
+  // Close on Escape
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === "Escape") {
@@ -44,33 +59,40 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isOpen, onClose, showConfirmModal, showErrorModal]);
 
-  // Close modal when clicking outside the modal container
+  // Handle Outside Click
   const handleOutsideClick = (e) => {
     if (e.target.className === "modal-overlay") {
       onClose();
     }
   };
 
-  // Lấy thông tin ảnh bổ sung cho center
+  // Fetch Full Center Details via V2 GraphQL
   useEffect(() => {
     if (center && center._id) {
-      console.log("Fetching additional images for center:", center._id);
-      getCenterInfoById(center._id)
+      console.log("Fetching full details for center:", center._id);
+      // - Using getCenterInfoByIdGQL
+      getCenterInfoByIdGQL(center._id)
         .then((data) => {
-          if (data && data.center && Array.isArray(data.center.imgUrl)) {
-            const images = data.center.imgUrl.slice(1);
-            setAdditionalImages(images);
-          } else {
-            console.warn("Không tìm thấy trường imgUrl hoặc không phải là mảng", data);
+          if (data) {
+            // Merge existing prop data with new detailed data
+            setCenterDetails((prev) => ({
+              ...prev,
+              ...data, // Update fields: phone, description, googleMapUrl, facilities, etc.
+            }));
+
+            // 💡 CẬP NHẬT LOGIC MỚI: Lấy danh sách ảnh từ trường imageUrlList (Gateway trả về)
+            if (Array.isArray(data.imageUrlList) && data.imageUrlList.length > 0) {
+              setAdditionalImages(data.imageUrlList);
+            }
           }
         })
         .catch((error) => {
-          console.error("Error fetching center info for images:", error);
+          console.error("Error fetching center details:", error);
         });
     }
   }, [center]);
 
-  // Lấy danh sách đánh giá từ server
+  // Fetch Reviews (Legacy)
   useEffect(() => {
     if (center && center._id) {
       getCommentsForCenter(center._id)
@@ -85,33 +107,25 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
     }
   }, [center]);
 
-  // Xử lý khi nhấn "Gửi đánh giá" - Kiểm tra đăng nhập trước
+  // Submit Review Handler
   const handleSubmitReview = (e) => {
     e.preventDefault();
-
-    // Kiểm tra nếu chưa đăng nhập (userId không tồn tại)
     if (!userId) {
       setErrorMessage("Vui lòng đăng nhập để đánh giá!");
       setShowErrorModal(true);
       return;
     }
-
-    // Kiểm tra nội dung đánh giá
     if (reviewContent.trim() === "") {
       setErrorMessage("Vui lòng nhập nội dung đánh giá!");
       setShowErrorModal(true);
       return;
     }
-
-    // Reset thông báo lỗi trước khi gửi
     setErrorMessage("");
     setShowErrorModal(false);
-
-    // Hiển thị modal xác nhận
     setShowConfirmModal(true);
   };
 
-  // Xử lý khi người dùng xác nhận gửi đánh giá
+  // Confirm Submit
   const confirmSubmitReview = async () => {
     const ratingData = {
       centerId: center._id,
@@ -169,15 +183,30 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const googleMapUrl = center.location
-    ? center.location
+  // Prioritize googleMapUrl from API (V2), fallback to location, fallback to default
+  const googleMapUrl = centerDetails.googleMapUrl
+    ? centerDetails.googleMapUrl
+    : centerDetails.location
+    ? centerDetails.location
     : "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3723.9244038028873!2d105.78076375707085!3d21.03708178599531!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3135ab32dd484c53%3A0x4b5c0c67d46f326b!2zMTcgRG_Do24gS-G6vyBUaGnhu4duLCBNYWkgROG7i2NoLCBD4bqndSBHaeG6pXksIEjDoCBO4buZaSwgVmnhu4d0IE5hbQ!5e0!3m2!1svi!2s!4v1680235904873!5m2!1svi!2s";
+
+  // 💡 LOGIC CHỌN ẢNH CHÍNH (MAIN IMAGE) ĐÃ ĐƯỢC CẢI TIẾN:
+  // 1. Ưu tiên ảnh từ props (do Centers.jsx đã xử lý chọn ảnh bìa)
+  // 2. Nếu không có props (ví dụ reload trang), lấy từ chi tiết API (imageUrlList[0])
+  // 3. Nếu không có Gallery, lấy Logo
+  // 4. Fallback về default
+  const mainImage = 
+    (center.imgUrl && center.imgUrl[0]) || 
+    (centerDetails.imageUrlList && centerDetails.imageUrlList[0]) || 
+    centerDetails.logoUrl || 
+    (centerDetails.imgUrl && centerDetails.imgUrl[0]) || // Fallback cho cấu trúc cũ
+    "/images/default.png";
 
   return (
     <div className="modal-overlay" onClick={handleOutsideClick}>
       <div className="modal-container" ref={modalRef}>
         <div className="modal-header">
-          <h2>{center.name}</h2>
+          <h2>{centerDetails.name}</h2>
           <button className="close-modal-btn" onClick={onClose} aria-label="Đóng">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -199,8 +228,8 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
         <div className="modal-body">
           <div className="modal-main-image">
             <img
-              src={center.imgUrl[0] || "/images/default.png"}
-              alt={center.name}
+              src={mainImage}
+              alt={centerDetails.name}
               onError={(e) => {
                 e.target.src = "/images/default.png";
               }}
@@ -215,25 +244,25 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
                 <span className="detail-label">
                   <i className="fas fa-map-marker-alt"></i> Địa chỉ:
                 </span>
-                <span className="detail-value">{center.address}</span>
+                <span className="detail-value">{centerDetails.address}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">
                   <i className="fas fa-clock"></i> Giờ mở cửa:
                 </span>
-                <span className="detail-value">{center.openHours}</span>
+                <span className="detail-value">{centerDetails.openHours || "05:00 - 24:00"}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">
                   <i className="fas fa-phone"></i> Liên hệ:
                 </span>
-                <span className="detail-value">{center.phone}</span>
+                <span className="detail-value">{centerDetails.phone || "Đang cập nhật"}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">
                   <i className="fas fa-table-tennis"></i> Số sân:
                 </span>
-                <span className="detail-value">{center.totalCourts} sân</span>
+                <span className="detail-value">{centerDetails.totalCourts} sân</span>
               </div>
             </div>
           </div>
@@ -264,11 +293,15 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
               <i className="fas fa-images"></i> Hình ảnh
             </h3>
             <div className="image-gallery">
-              {additionalImages.map((img, index) => (
-                <div key={index} className="gallery-item">
-                  <img src={img} alt={`${center.name} - Ảnh ${index + 2}`} />
-                </div>
-              ))}
+              {additionalImages.length > 0 ? (
+                additionalImages.map((img, index) => (
+                  <div key={index} className="gallery-item">
+                    <img src={img} alt={`${centerDetails.name} - Ảnh ${index + 1}`} />
+                  </div>
+                ))
+              ) : (
+                <p>Chưa có hình ảnh bổ sung.</p>
+              )}
             </div>
           </div>
 
@@ -277,12 +310,16 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
               <i className="fas fa-concierge-bell"></i> Dịch vụ
             </h3>
             <div className="services-grid">
-              {center.facilities.map((facility, index) => (
-                <div key={index} className="service-item">
-                  <i className="fas fa-check-circle"></i>
-                  <span>{facility}</span>
-                </div>
-              ))}
+              {centerDetails.facilities && centerDetails.facilities.length > 0 ? (
+                centerDetails.facilities.map((facility, index) => (
+                  <div key={index} className="service-item">
+                    <i className="fas fa-check-circle"></i>
+                    <span>{facility}</span>
+                  </div>
+                ))
+              ) : (
+                 <p>Đang cập nhật dịch vụ...</p>
+              )}
             </div>
           </div>
 
@@ -349,7 +386,7 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
       {/* Modal xác nhận gửi đánh giá */}
       {showConfirmModal && (
         <>
-          <div 
+          <div
             className="modal-overlay confirm-overlay"
             style={{
               position: 'fixed',
@@ -363,7 +400,7 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
             }}
             onClick={() => setShowConfirmModal(false)}
           />
-          <div 
+          <div
             className="confirm-modal"
             style={{
               position: 'fixed',
@@ -422,7 +459,7 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
       {/* Modal thông báo lỗi */}
       {showErrorModal && (
         <>
-          <div 
+          <div
             className="modal-overlay confirm-overlay"
             style={{
               position: 'fixed',
@@ -436,7 +473,7 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
             }}
             onClick={() => setShowErrorModal(false)}
           />
-          <div 
+          <div
             className="confirm-modal"
             style={{
               position: 'fixed',

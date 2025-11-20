@@ -13,16 +13,19 @@ const Header = () => {
 
   const { user, logout, loading } = useContext(AuthContext);
   const navigate = useNavigate();
-  const logo = "/images/shuttleCock.png";
+  const DEFAULT_AVATAR_URL = "https://res.cloudinary.com/dm4uxmmtg/image/upload/v1762859721/badminton_app/avatars/default_user_avatar.png";
 
-  // Định nghĩa base URL của backend
-  const BACKEND_URL = "http://localhost:3000"; // Backend chạy trên port 3000
+  // --- Logic xử lý Avatar ---
 
-  // Xử lý đường dẫn ảnh: thêm domain của backend nếu cần
+  // Backend (UserService) luôn trả về URL đầy đủ (Cloudinary URL).
+  // 💡 SỬA LOGIC HIỂN THỊ:
   const getAvatarImagePath = (path) => {
-    if (!path) return "/default-avatar.png"; // Sử dụng hình ảnh mặc định từ public
-    if (path.startsWith("http")) return path;
-    return `${BACKEND_URL}${path}`;
+    // Nếu path có giá trị (khác null/undefined/empty) -> Dùng path
+    if (path && path.trim() !== "") {
+        return path; 
+    }
+    // Nếu path là null -> Trả về ảnh mặc định
+    return DEFAULT_AVATAR_URL;
   };
 
   useEffect(() => {
@@ -152,13 +155,20 @@ const Header = () => {
                         className="flex items-center border border-white text-white rounded-md px-3 py-1 hover:bg-white hover:bg-opacity-20 transition-colors cursor-pointer"
                       >
                         <img
-                          src={getAvatarImagePath(user.avatar_image_path)}
+                          src={getAvatarImagePath(user?.avatar_url)}
                           alt="Avatar"
-                          className="w-10 h-10 rounded-full object-cover mr-2"
+                          // Giữ các class cơ bản của Tailwind
+                          className="w-10 h-10 rounded object-cover mr-2"
+                          // 💡 SỬ DỤNG STYLE INLINE CHỈ VỚI BORDER ĐƠN
+                          style={{
+                            // Viền đơn 2px màu Vàng nhạt (phù hợp với màu hover/dropdown)
+                            border: `2px solid #FCD34D`,
+                            transition: 'all 0.3s' // Giữ hiệu ứng chuyển đổi
+                          }}
                           onError={(e) => {
-                            console.log("Lỗi tải ảnh trong Header:", user.avatar_image_path);
+                            console.log("Lỗi tải ảnh trong Header:", user?.avatar_url);
                             e.target.onerror = null;
-                            e.target.src = "/default-avatar.png"; // Sử dụng hình ảnh mặc định từ public
+                            e.target.src = "/default-avatar.png";
                           }}
                         />
                         <span className="text-lg">{user.name}</span>

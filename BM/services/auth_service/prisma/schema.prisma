@@ -1,93 +1,109 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
+// 💡 ĐÃ CẬP NHẬT 3 VAI TRÒ
 enum Role {
-  USER
-  ADMIN
+  USER 
+  CENTER_MANAGER
+  SUPER_ADMIN
 }
 
 model User {
-  id                    String              @id @default(uuid())
-  email                 String              @unique
-  username              String?             @unique
-  role                  Role                @default(USER)
-  
-  passwordHash          String?             
-  
-  isActive              Boolean             @default(true)
-  isVerified            Boolean             @default(false)
+  // 🔑 ID CHÍNH: Thêm @db.Uuid
+  id                    String              @id @default(uuid()) @db.Uuid
+// Định dạng: USER-uuidv4(). Dùng để giao tiếp với các Service khác.
+  publicUserId          String? @unique @db.VarChar(50) // Dấu '?' là chìa khóa
+  email                 String              @unique
+  username              String?             @unique
+  role                  Role                @default(USER)
+  
+  passwordHash          String?             
+  
+  isActive              Boolean             @default(true)
+  isVerified            Boolean             @default(false)
 
-  // 💡 TRƯỜNG ĐÃ CÓ: Số lần đăng nhập thất bại liên tiếp (dùng để đếm)
-  failedLoginAttempts   Int                 @default(0) 
+  // 💡 TRƯỜNG ĐÃ CÓ: Số lần đăng nhập thất bại liên tiếp (dùng để đếm)
+  failedLoginAttempts   Int                 @default(0) 
 
-  // 💡 TRƯỜNG CẦN THÊM: Thời điểm tài khoản bị khóa cho đến khi nào (nếu bị khóa)
-  lockoutUntil          DateTime?           // Thêm dấu ? để cho phép NULL (optional)
-  
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  // 💡 TRƯỜNG CẦN THÊM: Thời điểm tài khoản bị khóa cho đến khi nào (nếu bị khóa)
+  lockoutUntil          DateTime?           
+  
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
-  externalIdentities    ExternalIdentity[]  
-  sessions              Session[]
-  refreshTokens         RefreshToken[]
-  verificationTokens   VerificationToken[]
+  externalIdentities    ExternalIdentity[]  
+  sessions              Session[]
+  refreshTokens         RefreshToken[]
+  verificationTokens   VerificationToken[]
 }
 
 model Session {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-} 
+  // 🔑 ID: Thêm @db.Uuid
+  id        String   @id @default(uuid()) @db.Uuid
+  // 🔑 Khóa Ngoại: Thêm @db.Uuid
+  userId    String @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade) // 💡 Thêm onDelete
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+} 
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  // 🔑 ID: Thêm @db.Uuid
+  id        String   @id @default(uuid()) @db.Uuid
+  // 🔑 Khóa Ngoại: Thêm @db.Uuid
+  userId    String @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade) // 💡 Thêm onDelete
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }
 
 model ExternalIdentity {
-  id                String    @id @default(uuid())
-  userId            String    
-  user              User      @relation(fields: [userId], references: [id])
-  
-  providerName      String    
-  providerUserId    String    
+  // 🔑 ID: Thêm @db.Uuid
+  id                String    @id @default(uuid()) @db.Uuid
+  // 🔑 Khóa Ngoại: Thêm @db.Uuid
+  userId            String @db.Uuid
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade) // 💡 Thêm onDelete
+  
+  providerName      String    
+  providerUserId    String    
 
-  createdAt         DateTime  @default(now())
+  createdAt         DateTime  @default(now())
 
-  // Mỗi ID từ mỗi nhà cung cấp chỉ thuộc về MỘT User.
-  @@unique([providerName, providerUserId]) 
+  @@unique([providerName, providerUserId]) 
 }
 
 model VerificationToken {
-  id        String    @id @default(uuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id])
-  token     String    @unique // Token duy nhất được gửi qua email
-  expiresAt DateTime
-  createdAt DateTime  @default(now())
+  // 🔑 ID: Thêm @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
+  // 🔑 Khóa Ngoại: Thêm @db.Uuid
+  userId    String @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade) // 💡 Thêm onDelete
+  token     String    @unique // Token duy nhất được gửi qua email
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
 
-  @@unique([userId, token])
+  @@unique([userId, token])
 }
 
-model ServiceClient {
-  id           String   @id @default(uuid())
-  name         String   @unique        // Tên service, ví dụ: "service-a"
-  clientId     String   @unique        // Giống OAuth client_id
-  clientSecret String                   // Secret để xác thực nội bộ
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+model AuthClient {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @unique
+  clientId     String   @unique // Định danh cho Admin UI (ví dụ: 'admin-app') hoặc S2S
+  clientSecret String
+  isActive     Boolean  @default(true)
+  
+  // 💡 TRƯỜNG MỚI: Định nghĩa các Role được phép đăng nhập vào Client này
+  allowedRoles Role[]   @default([]) 
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

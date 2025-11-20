@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      containers:
+      - name: auth-service-container
+        image: auth-service:local      # 1. Dùng image bạn vừa build
+        imagePullPolicy: IfNotPresent  # 2. Bắt buộc: Bảo K8s dùng image local
+        ports:
+        - containerPort: 8081          # 3. Cổng app của bạn chạy (từ .env)
+        env:                           # 4. Cung cấp .env cho app
+        - name: PORT
+          value: "8081"
+        - name: DATABASE_URL
+          value: "postgresql://postgres:Bop29042@@5@db.rdbrlykvzmimobfrvfzz.supabase.co:5432/postgres"
+        - name: JWT_SECRET
+          value: "bop29042005"
+        - name: JWT_REFRESH_SECRET
+          value: "Bop29042@@5"
+        - name: JWT_EXPIRY
+          value: "15m"
+        - name: REFRESH_TOKEN_EXPIRY
+          value: "7d"
+        - name: API_GATEWAY_URL
+          value: "http://localhost:8080" # (Lưu ý: K8s có thể không gọi localhost này được)
+        - name: EMAIL_USER
+          value: "23021490@gmail.com"
+        - name: EMAIL_PASS
+          value: "rhtbaruywiujzexp"
+        - name: USER_SERVICE_INTERNAL_URL
+          value: "http://localhost:8085" # (Lưu ý: K8s có thể không gọi localhost này được)
+        - name: INTERNAL_JOB_SECRET
+          value: "some_internal" # 5. Secret key bạn đã định nghĩa

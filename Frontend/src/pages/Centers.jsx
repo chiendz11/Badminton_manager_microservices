@@ -3,12 +3,11 @@ import { Link, useNavigate } from "react-router-dom";
 import "../styles/centers.css";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
-import { checkPendingExists } from "../apis/booking";
-import { getAllCenters } from "../apis/centers"; // Hàm API lấy centers
+import { checkPendingExists } from "../apis/booking"; 
+import { getAllCentersGQL, getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api.js"; 
 import { AuthContext } from "../contexts/AuthContext";
 import CenterDetailModal from "../pages/CenterDetailModal";
 import LoginModal from "../pages/Login";
-import { getCenterInfoById } from "../apis/centers"; // Hàm API lấy thông tin center theo ID
 
 const Centers = () => {
   const { user } = useContext(AuthContext);
@@ -76,14 +75,26 @@ const Centers = () => {
   const fetchCenters = async () => {
     try {
       setLoading(true);
-      const data = await getAllCenters();
-      // Kiểm tra nếu data là một object có thuộc tính 'centers'
-      if (data && data.centers) {
-        setCenters(data.centers);
-      } else {
-        // Nếu API trả về trực tiếp mảng centers, thì setCenters(data)
-        setCenters(data);
-      }
+      // Using getAllCentersGQL
+      const data = await getAllCentersGQL();
+      
+      // Map GraphQL data to Component structure
+      const mappedCenters = data.map(c => {
+        // 💡 LOGIC MỚI: Ưu tiên ảnh sân (imageUrlList[0]) làm ảnh bìa
+        // Nếu không có ảnh sân thì mới dùng logoUrl
+        const coverImage = (c.imageUrlList && c.imageUrlList.length > 0) 
+                           ? c.imageUrlList[0] 
+                           : c.logoUrl;
+        
+        return {
+            ...c,
+            _id: c.centerId, // Map centerId to _id for compatibility
+            imgUrl: coverImage ? [coverImage] : [], // Map thành mảng chứa 1 ảnh bìa
+            // Description and facilities handled in render
+        };
+      });
+
+      setCenters(mappedCenters);
       setLoading(false);
     } catch (err) {
       setError(err.message);
@@ -95,8 +106,6 @@ const Centers = () => {
     fetchCenters();
   }, []);
 
-  // Hàm goToBooking: nếu chưa đăng nhập thì mở modal đăng nhập, nếu đã có pending thì thông báo,
-  // nếu không thì lưu thông tin booking vào localStorage và điều hướng sang trang booking
   const goToBooking = async (centerId) => {
     if (!user || !user._id) {
       alert("Hãy đăng nhập hoặc đăng ký để đặt sân");
@@ -108,10 +117,10 @@ const Centers = () => {
       if (exists) {
         alert("Bạn đã có booking pending cho trung tâm này. Vui lòng chờ hết 5 phút.");
       } else {
-        // Gọi API lấy thông tin trung tâm để lấy tên
-        const centerInfo = await getCenterInfoById(centerId);
-        if (centerInfo.success && centerInfo.center) {
-          localStorage.setItem("centerName", centerInfo.center.name);
+        const centerInfo = await getCenterInfoByIdGQL(centerId);
+        
+        if (centerInfo) {
+          localStorage.setItem("centerName", centerInfo.name);
         }
         const bookingData = { centerId, date: today };
         localStorage.setItem("bookingData", JSON.stringify(bookingData));
@@ -124,8 +133,8 @@ const Centers = () => {
 
   const renderRatingStars = (rating) => {
     const stars = [];
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 >= 0.5;
+    const fullStars = Math.floor(rating || 0);
+    const hasHalfStar = (rating || 0) % 1 >= 0.5;
     for (let i = 1; i <= 5; i++) {
       if (i <= fullStars) {
         stars.push(<i key={i} className="fas fa-star"></i>);
@@ -139,9 +148,10 @@ const Centers = () => {
   };
 
   const renderFacilities = (facilities) => {
+    if (!facilities || facilities.length === 0) return null;
     return (
       <div className="center-facilities">
-        {facilities && facilities.map((facility, index) => ( // Thêm kiểm tra facilities tồn tại
+        {facilities.map((facility, index) => (
           <span key={index} className="facility-tag">
             {facility}
           </span>
@@ -226,7 +236,7 @@ const Centers = () => {
                     <h2 data-testid={`center-name-${center._id}`}>{center.name}</h2>
                     <div className="center-rating" data-testid={`center-rating-${center._id}`}>
                       <div className="stars">{renderRatingStars(center.avgRating)}</div>
-                      <span>{center.avgRating}/5</span>
+                      <span>{center.avgRating || 0}/5</span>
                     </div>
                   </div>
                   <div className="center-booking-stats" data-testid={`center-booking-stats-${center._id}`}>
@@ -237,15 +247,18 @@ const Centers = () => {
                     <i className="fas fa-map-marker-alt"></i> {center.address}
                   </p>
                   <div className="center-divider"></div>
-                  <p className="center-description" data-testid={`center-description-${center._id}`}>{center.description}</p>
+                  {center.description && (
+                     <p className="center-description" data-testid={`center-description-${center._id}`}>{center.description}</p>
+                  )}
                   {renderFacilities(center.facilities)}
+                  
                   <div className="center-footer">
                     <div className="center-details">
                       <span data-testid={`center-open-hours-${center._id}`}>
                         <i className="fas fa-clock"></i> {openHours}
                       </span>
                       <span data-testid={`center-phone-${center._id}`}>
-                        <i className="fas fa-phone"></i> {center.phone}
+                        <i className="fas fa-phone"></i> {center.phone || "Liên hệ"}
                       </span>
                     </div>
                     <div className="center-action-buttons">
@@ -253,14 +266,14 @@ const Centers = () => {
                         className="view-details-btn"
                         onClick={() => openModal(center)}
                         title="Xem chi tiết"
-                        data-testid={`center-details-button-${center._id}`} // THÊM data-testid NÀY
+                        data-testid={`center-details-button-${center._id}`}
                       >
                         <i className="fas fa-eye"></i>
                       </button>
                       <button
                         onClick={() => goToBooking(center._id)}
                         className="book-center-btn"
-                        data-testid={`book-now-button-${center._id}`} // THÊM data-testid NÀY
+                        data-testid={`book-now-button-${center._id}`}
                       >
                         <span>Đặt Sân Ngay</span>
                         <i className="fas fa-arrow-right"></i>
@@ -273,13 +286,12 @@ const Centers = () => {
           </div>
         )}
 
-        {/* Phần giải đấu sắp diễn ra */}
         <div className="upcoming-tournaments-section">
           <div className="section-header">
             <h2>Giải Đấu Sắp Diễn Ra</h2>
             <p>Đăng ký tham gia các giải đấu cầu lông hấp dẫn</p>
           </div>
-          
+
           <div className="tournaments-container">
             {upcomingTournaments.map((tournament) => (
               <div key={tournament.id} className="tournament-card" data-testid={`tournament-card-${tournament.id}`}>
@@ -323,7 +335,7 @@ const Centers = () => {
               </div>
             ))}
           </div>
-          
+
           <div className="view-all-tournaments">
             <Link to="/competition" className="view-all-btn" data-testid="view-all-tournaments-button">
               <span>Xem Tất Cả Giải Đấu</span>
@@ -332,22 +344,21 @@ const Centers = () => {
           </div>
         </div>
 
-        {/* Phần đối tác */}
         <div className="partners-section">
           <div className="section-header">
             <h2>Đối Tác Của Chúng Tôi</h2>
             <p>Hợp tác cùng những thương hiệu cầu lông hàng đầu thế giới</p>
           </div>
-          
+
           <div className="partners-logo-container">
             {partners.map((partner, index) => (
-              <a 
-                href={partner.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="partner-logo" 
+              <a
+                href={partner.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="partner-logo"
                 key={index}
-                data-testid={`partner-logo-${partner.name.toLowerCase().replace(/\s/g, '-')}`} // Thêm data-testid
+                data-testid={`partner-logo-${partner.name.toLowerCase().replace(/\s/g, '-')}`}
               >
                 <img src={partner.logo} alt={partner.name} />
               </a>
@@ -384,16 +395,15 @@ const Centers = () => {
             center={selectedCenter}
             isOpen={modalOpen}
             onClose={closeModal}
-            data-testid="center-detail-modal" // Thêm data-testid
+            data-testid="center-detail-modal"
           />
         )}
       </div>
 
-      {/* Modal đăng nhập nếu chưa đăng nhập */}
       <LoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
-        data-testid="login-modal" // Thêm data-testid
+        data-testid="login-modal"
       />
       <Footer />
     </>

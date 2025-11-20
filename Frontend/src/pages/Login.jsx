@@ -1,21 +1,29 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../styles/login.css';
-import { loginUser, registerUser } from '../apiV2/auth.api.js';
+import { loginUser } from '../apiV2/auth_service/auth.api.js';
+import { loginWithGoogle } from '../apiV2/auth_service/oauth2.0/google_login.api.js';
+import { registerUser } from '../apiV2/auth_service/rest/users.api.js';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 import { forgotPasswordByEmailSimpleApi } from '../apis/users';
+
+const CLIENT_ID = import.meta.env.VITE_CLIENT_ID || 'user-app';
+console.log("[Login.jsx] Sử dụng CLIENT_ID =", CLIENT_ID);
 
 const LoginModal = ({ isOpen, onClose }) => {
   const [activeMode, setActiveMode] = useState("login");
   const modalRef = useRef(null);
-  const { refreshUser } = useContext(AuthContext);
+  const { login } = useContext(AuthContext);
   const navigate = useNavigate();
 
   // State cho form đăng nhập
   const [identifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginError, setLoginError] = useState(''); // Sẽ chứa thông báo lỗi chi tiết
+  const [loginError, setLoginError] = useState(''); 
   const [isLoginLoading, setIsLoginLoading] = useState(false);
+  
+  // 💡 1. THÊM STATE ĐỂ ẨN/HIỆN MẬT KHẨU ĐĂNG NHẬP
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   // State cho form đăng ký
   const [signupData, setSignupData] = useState({
@@ -38,14 +46,12 @@ const LoginModal = ({ isOpen, onClose }) => {
   // Quản lý lỗi từng trường
   const [fieldErrors, setFieldErrors] = useState({});
 
-  // Ẩn/hiện mật khẩu
+  // Ẩn/hiện mật khẩu (Form Đăng ký)
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Trạng thái loading cho form đăng ký
   const [isLoading, setIsLoading] = useState(false);
 
-  // Tạo ref cho từng trường (đã có sẵn, giữ nguyên)
   const refs = {
     name: useRef(null),
     email: useRef(null),
@@ -55,13 +61,12 @@ const LoginModal = ({ isOpen, onClose }) => {
     confirmPassword: useRef(null),
   };
 
-  // Hàm chuyển đổi giữa các form
   const handleRegisterClick = () => {
     setActiveMode("register");
     setSignupError('');
     setSignupSuccess('');
     setFieldErrors({});
-    setIsFormReady(false); // Reset form readiness
+    setIsFormReady(false); 
   };
 
   const handleLoginClick = () => {
@@ -74,20 +79,29 @@ const LoginModal = ({ isOpen, onClose }) => {
     setForgotMessage('');
   };
 
-  // Xử lý đăng nhập
+  const handleGoogleLoginClick = (e) => {
+    e.preventDefault(); 
+    loginWithGoogle(); 
+  };
+
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    setLoginError(''); // Clear error before new attempt
+    setLoginError(''); 
     setIsLoginLoading(true);
+    console.log("[Login.jsx] Đang gửi yêu cầu đăng nhập với clientId:", CLIENT_ID);
     try {
-      const result = await loginUser({ identifier: identifier, password: loginPassword });
-      console.log('Đăng nhập thành công:', result);
-      await refreshUser(); // Cập nhật thông tin user trong context
+      const result = await loginUser({ 
+          identifier: identifier, 
+          password: loginPassword,
+          clientId: CLIENT_ID 
+      });
+      
+      console.log('Đăng nhập thành công:', result);   
+      await login(result); 
       navigate('/');
       onClose();
     } catch (error) {
       console.error("Lỗi đăng nhập:", error);
-      // Lấy thông báo lỗi từ backend
       const errorMessage = error.response?.data?.message || error.message || "Đã có lỗi xảy ra.";
       setLoginError(errorMessage);
     } finally {
@@ -95,14 +109,12 @@ const LoginModal = ({ isOpen, onClose }) => {
     }
   };
 
-  // Xử lý thay đổi input trong form đăng ký
   const handleChange = (e) => {
     const { name, value } = e.target;
     setSignupData((prevData) => ({ ...prevData, [name]: value }));
     setFieldErrors((prev) => ({ ...prev, [name]: '' }));
   };
 
-  // Xử lý đăng ký
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
     setSignupError('');
@@ -116,7 +128,13 @@ const LoginModal = ({ isOpen, onClose }) => {
 
     setIsLoading(true);
     try {
-      const { confirmPassword, ...payload } = signupData;
+      const { confirmPassword, ...restOfData } = signupData;
+      
+      const payload = {
+        ...restOfData, 
+        confirm_password: confirmPassword 
+      };
+      
       const result = await registerUser(payload);
       console.log('Đăng ký thành công:', result);
       setSignupSuccess(result.message || "Đăng ký thành công!");
@@ -133,7 +151,6 @@ const LoginModal = ({ isOpen, onClose }) => {
     }
   };
 
-  // Xử lý quên mật khẩu
   const handleForgotSubmit = async (e) => {
     e.preventDefault();
     setForgotMessage('');
@@ -149,7 +166,6 @@ const LoginModal = ({ isOpen, onClose }) => {
     }
   };
 
-  // Đóng modal khi click bên ngoài
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (modalRef.current && !modalRef.current.contains(event.target)) {
@@ -166,12 +182,11 @@ const LoginModal = ({ isOpen, onClose }) => {
     };
   }, [isOpen, onClose]);
 
-  // Ensure signup form is ready after rendering
   useEffect(() => {
     if (activeMode === "register" || activeMode === "registerSuccess") {
       const timer = setTimeout(() => {
         setIsFormReady(true);
-      }, 500); // Small delay to ensure form is fully rendered
+      }, 500); 
       return () => clearTimeout(timer);
     }
   }, [activeMode]);
@@ -194,23 +209,35 @@ const LoginModal = ({ isOpen, onClose }) => {
                 <input
                   id="login-username"
                   type="text"
-                  placeholder="Nhâp email hoặc tên đăng nhập"
+                  placeholder="Nhập email hoặc tên đăng nhập"
                   value={identifier}
                   onChange={(e) => setLoginIdentifier(e.target.value)}
                 />
                 <i className="bx bxs-user"></i>
               </div>
+              
+              {/* 💡 2. CẬP NHẬT INPUT BOX MẬT KHẨU VỚI ICON CON MẮT */}
               <div className="input-box">
                 <input
                   id="login-password"
-                  type="password"
+                  type={showLoginPassword ? "text" : "password"} // Thay đổi type dựa trên state
                   placeholder="Nhập mật khẩu"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                 />
                 <i className="bx bxs-lock-alt"></i>
+                
+                {/* Nút ẩn hiện mật khẩu */}
+                <span
+                  id="toggle-login-password-btn"
+                  className="toggle-pw"
+                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <i className={`fas ${showLoginPassword ? 'fa-eye-slash' : 'fa-eye'}`} style={{ fontSize: '1.1rem' }}></i>
+                </span>
               </div>
-              {/* HIỂN THỊ THÔNG BÁO LỖI ĐĂNG NHẬP */}
+
               {loginError && <p id="login-error-message" className="error-message">{loginError}</p>}
               <div className="forgot-link">
                 <a id="forgot-password-link" href="#" onClick={handleForgotClick}>Quên mật khẩu?</a>
@@ -223,7 +250,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                 <a id="facebook-login-btn" href="/auth/facebook" className="social-icon facebook">
                   <i className="fab fa-facebook-f"></i>
                 </a>
-                <a id="google-login-btn" href="/auth/google" className="social-icon google">
+                <a id="google-login-btn" href="#" onClick={handleGoogleLoginClick} className="social-icon google">
                   <i className="fab fa-google"></i>
                 </a>
               </div>
@@ -231,13 +258,13 @@ const LoginModal = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {/* FORM QUÊN MẬT KHẨU */}
+        {/* FORM QUÊN MẬT KHẨU (Giữ nguyên) */}
         {activeMode === "forgot" && (
           <div className="form-box forgot">
             <form onSubmit={handleForgotSubmit} noValidate>
               <h1>Quên mật khẩu</h1>
               {forgotMessage && (
-                forgotMessage.includes('thành công') ? // Simple check for success/error message
+                forgotMessage.includes('thành công') ? 
                   <p id="forgot-success-message" className="info-message">{forgotMessage}</p> :
                   <p id="forgot-error-message" className="error-message">{forgotMessage}</p>
               )}
@@ -253,13 +280,13 @@ const LoginModal = ({ isOpen, onClose }) => {
                 <i className="bx bxs-envelope"></i>
               </div>
               <button id="forgot-submit" type="submit" className="btn" disabled={isForgotLoading}>
-                {isForgotLoading ? <i className="fas fa-spinner fa-spin"></i> : 'Gửi yêu cầu'}
+                {isLoginLoading ? <i className="fas fa-spinner fa-spin"></i> : 'Gửi yêu cầu'}
               </button>
             </form>
           </div>
         )}
 
-        {/* FORM ĐĂNG KÝ */}
+        {/* FORM ĐĂNG KÝ (Giữ nguyên) */}
         {(activeMode === "register" || activeMode === "registerSuccess") && (
           <div className="form-box register" style={{ overflow: 'auto' }}>
             <form onSubmit={handleSignupSubmit} noValidate>
@@ -272,6 +299,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                 </div>
               )}
               <div className={`form-content ${isLoading || !isFormReady ? 'hidden' : ''}`}>
+                {/* ... (Các trường input đăng ký giữ nguyên) ... */}
                 <div className={`input-box ${fieldErrors.name ? 'invalid' : signupData.name.trim() ? 'valid' : ''}`}>
                   <input
                     id="signup-name"
@@ -362,7 +390,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     style={{ cursor: "pointer" }}
                   >
-                    <i className={`fas ${showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'}`} style={{ fontSize: '1.1rem' }}></i>
+                    <i className={`fas ${showConfirmPassword ? 'fa-eye-slash' : 'fa-eye'}`} style={{ fontSize: '1.EM' }}></i>
                   </span>
                 </div>
                 {fieldErrors.confirmPassword && <p id="field-error-confirmPassword" className="field-error">{fieldErrors.confirmPassword}</p>}
@@ -373,13 +401,13 @@ const LoginModal = ({ isOpen, onClose }) => {
                   disabled={isLoading || !isFormReady}
                 >
                   {isLoading ? <i className="fas fa-spinner fa-spin"></i> : 'Đăng ký'}
-                </button>
+               </button>
                 <p className="social-text">Đăng ký khác</p>
                 <div className="social-icons">
                   <a id="facebook-signup-btn" href="/auth/facebook" className="social-icon facebook">
                     <i className="fab fa-facebook-f"></i>
                   </a>
-                  <a id="google-signup-btn" href="/auth/google" className="social-icon google">
+                  <a id="google-signup-btn" href="#" onClick={handleGoogleLoginClick} className="social-icon google">
                     <i className="fab fa-google"></i>
                   </a>
                 </div>
@@ -388,7 +416,7 @@ const LoginModal = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {/* TOGGLE BOX */}
+        {/* TOGGLE BOX (Giữ nguyên) */}
         <div className="toggle-box">
           <div className="toggle-panel toggle-left">
             {activeMode === "login" && (
@@ -415,7 +443,7 @@ const LoginModal = ({ isOpen, onClose }) => {
               </>
             )}
             {activeMode === "registerSuccess" && (
-              <>
+             <>
                 <h1 className='pb-10 whitespace-nowrap'>Đăng ký thành công🥳</h1>
                 <div className="toggle-buttons">
                   <button

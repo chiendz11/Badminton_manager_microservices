@@ -1,15 +1,51 @@
 import { Router } from "express";
 import proxy from "express-http-proxy";
+import { authenticate } from "../middleware/authenticate.middleware.js";
+import { authorize } from "../middleware/authorize.middleware.js";
 import { AUTH_SERVICE_URL } from "../configs/env.config.js";
+
+// 💡 IMPORT CÁC VAI TRÒ MỚI TỪ BẢN ĐỒ (MAP)
+import { GATEWAY_ROLES } from "../configs/role_mapping.config.js";
 
 const router = Router();
 
-// Auth Service: không cần authenticate
-router.use(
-  "/auth",
-  proxy(AUTH_SERVICE_URL, {
-    proxyReqPathResolver: (req) => req.originalUrl.replace("/auth", ""),
-  })
+// ... (authProxy không đổi) ...
+const authProxy = proxy(AUTH_SERVICE_URL, {
+  proxyReqPathResolver: (req) => req.originalUrl.replace("/auth", ""),
+  // 2. Chuyển tiếp thông tin người dùng đã xác thực (từ req.user) vào header
+    proxyReqOptDecorator: (proxyReqOpts, req) => {
+        // req.user được gán bởi authenticateJWT
+        if (req.user) {
+            proxyReqOpts.headers['X-User-ID'] = req.user.id;
+            proxyReqOpts.headers['X-User-Role'] = req.user.role;
+        }
+        return proxyReqOpts;
+    },
+});
+
+router.post("/users", authProxy); // Đăng ký người dùng
+router.post("/auth/login", authProxy); // Đăng nhập người dùng
+router.post("/auth/refresh-token", authProxy); // Làm mới token người dùng
+router.get("/auth/verify-user/:token", authProxy); // Xác minh email người dùng
+
+router.delete("/auth/logout", // Đăng xuất người dùng
+  authenticate, // Xác thực người dùng
+  // 💡 SỬA LỖI: Cập nhật mảng vai trò
+  authorize([GATEWAY_ROLES.USER, GATEWAY_ROLES.CENTER_MANAGER, GATEWAY_ROLES.SUPER_ADMIN]), 
+  authProxy); // Proxy người dùng
+
+// 💡 ROUTE MỚI: ĐỔI MẬT KHẨU
+router.put("/auth/change-password",
+  authenticate, // 1. Yêu cầu đăng nhập
+  authorize([ // 2. Yêu cầu có vai trò hợp lệ
+    GATEWAY_ROLES.USER, 
+    GATEWAY_ROLES.CENTER_MANAGER, 
+    GATEWAY_ROLES.SUPER_ADMIN
+  ]),
+  authProxy // 3. Chuyển tiếp đến AuthService
 );
 
+// ... (Các route Google không đổi) ...
+router.get("/auth/google/login", authProxy);
+router.get("/auth/google/callback", authProxy);
 export default router;
