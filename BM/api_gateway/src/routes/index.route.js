@@ -1,7 +1,7 @@
 import { Router } from "express";
 import authRoutes from "./auth.route.js";
 import userRoutes from "./user.route.js";
-
+import centerRoutes from "./center.route.js";
 const router = Router();
 
 // Logging middleware
@@ -13,6 +13,7 @@ router.use((req, res, next) => {
 // Gom tất cả routes
 router.use( authRoutes);
 router.use( userRoutes);
+router.use(centerRoutes);
 
 
 // Health check

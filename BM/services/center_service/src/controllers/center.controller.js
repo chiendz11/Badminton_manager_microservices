@@ -2,6 +2,7 @@
 
 import CenterService from '../services/center.service.js'; 
 // import { Center } from '../models/center.model.js'; // Có thể bỏ nếu không dùng trực tiếp model ở controller
+import { uploadFileToStorage } from '../clients/storage.client.js';
 
 const handleError = (res, error) => {
     console.error(`[CenterController] Error:`, error.message);
@@ -124,5 +125,39 @@ export const deleteCenterImage = async (req, res) => {
         
     } catch (error) {
         handleError(res, error);
+    }
+};
+
+export const uploadCenterImage = async (req, res) => {
+    try {
+        const { centerId } = req.params;
+        const file = req.file;
+        const userId = req.headers['x-user-id'];
+        console.log('[CenterController] Upload Request by userId:', userId, 'for centerId:', centerId);
+        const { type } = req.body; // 'logo' hoặc 'gallery'
+
+        if (!file) return res.status(400).json({ message: 'No file provided' });
+        if (!centerId) return res.status(400).json({ message: 'Center ID is required' });
+
+        const uploaderId = userId;
+        const fileType = type === 'logo' ? 'center_logo' : 'court_image';
+
+        const savedFile = await uploadFileToStorage(
+            file.buffer,
+            file.originalname,
+            fileType,
+            uploaderId,
+            centerId // ✅ Truyền centerId để phân folder
+        );
+
+        return res.status(201).json({
+            message: 'Upload successful',
+            fileId: savedFile.publicFileId,
+            publicUrl: savedFile.publicUrl
+        });
+
+    } catch (error) {
+        console.error('[CenterController] Upload Error:', error);
+        return res.status(500).json({ message: error.message });
     }
 };

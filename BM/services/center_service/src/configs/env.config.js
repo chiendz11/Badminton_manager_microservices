@@ -18,4 +18,6 @@ export const envConfig = {
 
     // 💡 API CỦA CÁC SERVICE KHÁC (Cần để gọi Storage Service)
     STORAGE_SERVICE_URL: process.env.STORAGE_SERVICE_URL || 'http://localhost:5002/api/v1/storage',
+    ALLOWED_INTERNAL_SERVICES: process.env.ALLOWED_INTERNAL_SERVICES || '',
+    
 };

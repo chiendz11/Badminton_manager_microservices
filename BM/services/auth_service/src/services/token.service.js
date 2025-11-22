@@ -15,7 +15,7 @@ export const TokenService = {
     generateAccessToken: (user) => {
         return jwt.sign(
             { 
-                userId: user.id, 
+                userId: user.publicUserId, 
                 role: user.role, 
                 type: 'access',
                 // 💡 1. THÊM VÀO PAYLOAD TOKEN

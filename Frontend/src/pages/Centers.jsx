@@ -3,8 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import "../styles/centers.css";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
-import { checkPendingExists } from "../apis/booking"; 
-import { getAllCentersGQL, getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api.js"; 
+import { checkPendingExists } from "../apis/booking";
+import { getAllCentersGQL, getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api.js";
 import { AuthContext } from "../contexts/AuthContext";
 import CenterDetailModal from "../pages/CenterDetailModal";
 import LoginModal from "../pages/Login";
@@ -77,20 +77,21 @@ const Centers = () => {
       setLoading(true);
       // Using getAllCentersGQL
       const data = await getAllCentersGQL();
-      
+      console.log("Fetched centers data:", data);
+
       // Map GraphQL data to Component structure
       const mappedCenters = data.map(c => {
         // 💡 LOGIC MỚI: Ưu tiên ảnh sân (imageUrlList[0]) làm ảnh bìa
         // Nếu không có ảnh sân thì mới dùng logoUrl
-        const coverImage = (c.imageUrlList && c.imageUrlList.length > 0) 
-                           ? c.imageUrlList[0] 
-                           : c.logoUrl;
-        
+        const coverImage = (c.imageUrlList && c.imageUrlList.length > 0)
+          ? c.imageUrlList[0]
+          : c.logoUrl;
+
         return {
-            ...c,
-            _id: c.centerId, // Map centerId to _id for compatibility
-            imgUrl: coverImage ? [coverImage] : [], // Map thành mảng chứa 1 ảnh bìa
-            // Description and facilities handled in render
+          ...c,
+          _id: c.centerId, // Map centerId to _id for compatibility
+          imgUrl: coverImage ? [coverImage] : [], // Map thành mảng chứa 1 ảnh bìa
+          // Description and facilities handled in render
         };
       });
 
@@ -118,7 +119,7 @@ const Centers = () => {
         alert("Bạn đã có booking pending cho trung tâm này. Vui lòng chờ hết 5 phút.");
       } else {
         const centerInfo = await getCenterInfoByIdGQL(centerId);
-        
+
         if (centerInfo) {
           localStorage.setItem("centerName", centerInfo.name);
         }
@@ -248,10 +249,10 @@ const Centers = () => {
                   </p>
                   <div className="center-divider"></div>
                   {center.description && (
-                     <p className="center-description" data-testid={`center-description-${center._id}`}>{center.description}</p>
+                    <p className="center-description" data-testid={`center-description-${center._id}`}>{center.description}</p>
                   )}
                   {renderFacilities(center.facilities)}
-                  
+
                   <div className="center-footer">
                     <div className="center-details">
                       <span data-testid={`center-open-hours-${center._id}`}>

@@ -79,6 +79,16 @@ const UserProfile = () => {
   const centerName = localStorage.getItem("centerName") || "Tên Trung Tâm Mặc Định";
   const slotGroupsFromLS = JSON.parse(localStorage.getItem("slotGroups") || "[]");
   const totalAmountLS = Number(localStorage.getItem("totalAmount")) || 0;
+  const DEFAULT_AVATAR_URL = "https://res.cloudinary.com/dm4uxmmtg/image/upload/v1762859721/badminton_app/avatars/default_user_avatar.png";
+
+  const getAvatarImagePath = (path) => {
+    // Nếu path có giá trị (khác null/undefined/empty) -> Dùng path
+    if (path && path.trim() !== "") {
+        return path; 
+    }
+    // Nếu path là null -> Trả về ảnh mặc định
+    return DEFAULT_AVATAR_URL;
+  };
 
   // 💡 ĐÃ XÓA: const BACKEND_URL
   // 💡 ĐÃ XÓA: const getAvatarImagePath
@@ -386,14 +396,14 @@ const UserProfile = () => {
             <div className="avatar-container">
               <img
                 // 💡 SỬA: Sử dụng 'avatar_url' (Mô hình Hybrid)
-                src={user?.avatar_url || "/default-avatar.png"}
+                src={getAvatarImagePath(user?.avatar_url)}
                 alt="Avatar"
                 className="user-avatar"
                 onError={(e) => {
                   // 💡 SỬA: Log đúng field
                   console.log("Lỗi tải ảnh trong UserProfile:", user?.avatar_url);
                   e.target.onerror = null;
-                  e.target.src = "/default-avatar.png";
+                  e.target.src = DEFAULT_AVATAR_URL;
                 }}
               />
               <div className="level-badge">{user?.level}</div>

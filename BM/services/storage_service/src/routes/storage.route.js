@@ -17,7 +17,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 // -----------------------------------------------------------------
 
 // API 1: Upload file mới
-router.post('/upload', internalAuth, upload.single('file'), uploadNewFile);
+router.post('/files', internalAuth, upload.single('file'), uploadNewFile);
 
 // API 2: Lấy danh sách URL (Bulk) - 💡 THÊM ROUTE NÀY
 // Endpoint thực tế: POST /api/v1/storage/bulk-urls

@@ -23,7 +23,7 @@ const uploadFile = async (fileBuffer, originalname, userId, fileType) => {
 
     try {
         // 💡 3. Vẫn gọi bình thường, nhưng dùng instance từ factory
-        const response = await storageApi.post('/api/v1/storage/upload', formData, {
+        const response = await storageApi.post('/api/v1/files', formData, {
             headers: formData.getHeaders(),
             timeout: 30000, // Có thể ghi đè timeout cho riêng tác vụ upload
         });
@@ -51,7 +51,7 @@ const deleteFile = async (fileId) => {
 
     try {
         // 💡 4. Vẫn gọi bình thường
-        await storageApi.delete(`/api/v1/storage/${fileId}`);
+        await storageApi.delete(`/api/v1/${fileId}`);
         console.log(`[StorageClient] ✅ Đã gửi yêu cầu xóa file cũ: ${fileId}`);
     } catch (error) {
         console.warn('[StorageClient] ⚠️ Cảnh báo: Xóa file cũ thất bại:', error.response?.data || error.message);

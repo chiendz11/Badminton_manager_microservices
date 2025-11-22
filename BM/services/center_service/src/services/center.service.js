@@ -6,7 +6,7 @@ import { envConfig } from '../configs/env.config.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // 💡 CHỈ GIỮ LẠI HÀM DELETE (Logic ghi/xóa vẫn thuộc về Service này)
-import { deleteFile as deleteFileFromStorage } from '../clients/storage.client.js'; 
+import { deleteFileFromStorage } from '../clients/storage.client.js'; 
 
 const DEFAULT_LOGO_FILE_ID = envConfig.DEFAULT_LOGO_FILE_ID;
 
@@ -48,7 +48,7 @@ const CenterService = {
         // - image_file_ids: Để Gateway lấy được list ảnh (imageUrlList) -> chọn làm cover
         // - isActive: Để lọc hoặc hiển thị trạng thái
         const centers = await Center.find()
-            .select('centerId name address avgRating bookingCount logo_file_id image_file_ids totalCourts googleMapUrl isActive')
+            .select('centerId name address avgRating bookingCount logo_file_id image_file_ids totalCourts googleMapUrl isActive centerManagerId phone')
             .lean();
         
         return centers; 
@@ -125,7 +125,7 @@ const CenterService = {
              throw new Error('Cannot delete: This image is currently set as the center logo.', { cause: 409 });
         }
         
-        // 1. Cập nhật DB
+        // 1. Cập nhật DBa
         await Center.updateOne(
             { centerId },
             { $pull: { image_file_ids: fileIdToRemove } }
@@ -139,6 +139,84 @@ const CenterService = {
         // 3. Trả về data mới nhất
         const updatedCenter = await Center.findOne({ centerId }).lean();
         return updatedCenter;
+    },
+
+    async createCenter(centerManagerId, centerData) {
+        const centerId = `CENTER-${uuidv4()}`;
+        const newCenter = new Center({
+            centerId,
+            centerManagerId,
+            ...centerData, 
+        });
+        await newCenter.save();
+        return newCenter.toObject();
+    },
+
+    // 💡 LOGIC UPDATE CÓ XỬ LÝ FILE RÁC
+    async updateCenterInfo(centerId, updateData) {
+        // 1. Lấy thông tin center CŨ
+        const oldCenter = await Center.findOne({ centerId }).lean();
+        if (!oldCenter) throw new Error('Center not found');
+
+        // 2. Lọc bỏ undefined data
+        Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
+        // 3. XỬ LÝ LOGO: Nếu logo thay đổi, xóa logo cũ
+        if (updateData.logoFileId && updateData.logoFileId !== oldCenter.logo_file_id) {
+            if (oldCenter.logo_file_id && oldCenter.logo_file_id !== 'DEFAULT_LOGO_ID') {
+                deleteFileFromStorage(oldCenter.logo_file_id).catch(console.error);
+            }
+        }
+
+        // 4. XỬ LÝ GALLERY: Tìm các ảnh bị xóa khỏi danh sách
+        if (updateData.image_file_ids) {
+            const oldImages = oldCenter.image_file_ids || [];
+            const newImages = updateData.image_file_ids || [];
+            
+            // Ảnh nào có trong Old mà không có trong New -> Đã bị xóa
+            const deletedImages = oldImages.filter(id => !newImages.includes(id));
+            
+            if (deletedImages.length > 0) {
+                console.log(`[CenterService] Cleaning up ${deletedImages.length} removed images...`);
+                Promise.all(deletedImages.map(id => deleteFileFromStorage(id))).catch(console.error);
+            }
+        }
+        
+        // 5. Cập nhật DB
+        const center = await Center.findOneAndUpdate(
+            { centerId },
+            { $set: updateData },
+            { new: true }
+        ).lean();
+
+        return center;
+    },
+
+    async deleteCenter(centerId) {
+        const center = await Center.findOne({ centerId });
+        if (!center) throw new Error('Center not found');
+
+        // Clean up all images
+        if (center.image_file_ids?.length) {
+            Promise.all(center.image_file_ids.map(id => deleteFileFromStorage(id))).catch(console.error);
+        }
+        if (center.logo_file_id) {
+            deleteFileFromStorage(center.logo_file_id).catch(console.error);
+        }
+
+        await Court.deleteMany({ centerId });
+        await Center.deleteOne({ centerId });
+        return true;
+    },
+
+    async getAllCenters() {
+        return await Center.find().lean();
+    },
+
+    async getCenterDetails(centerId) {
+        const center = await Center.findOne({ centerId }).lean();
+        if(center) center.courts = await Court.find({ centerId }).lean();
+        return center;
     }
 };
 

@@ -1,14 +1,13 @@
 import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loginAdmin } from '../apis_v2/auth_serivce/auth.api.js';
+import { loginAdmin } from '../apiV2/auth_service/auth.api.js';
 import { Eye, EyeOff, X } from 'lucide-react';
-import pic1 from '../image/pic1.jpg'; 
-import { AuthContext } from '../contexts/AuthContext.jsx'; 
+import pic1 from '../image/pic1.jpg';
+import { AuthContext } from '../contexts/AuthContext.jsx';
 
-// 💡 1. IMPORT LOADING SPINNER
-import LoadingSpinner from '../components/LoadingSpinner.jsx'; // Giả sử path là components/LoadingSpinner.jsx
+// 1. IMPORT LOADING SPINNER
+import LoadingSpinner from '../components/LoadingSpinner.jsx';
 
-// Lấy Client ID từ biến môi trường
 const CLIENT_ID = import.meta.env.VITE_CLIENT_ID;
 
 const Login = () => {
@@ -16,8 +15,10 @@ const Login = () => {
   const [loginData, setLoginData] = useState({ identifier: '', password: '' });
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+
   const navigate = useNavigate();
-  const { refreshAdmin } = useContext(AuthContext);
+  // Lấy hàm login từ Context
+  const { login } = useContext(AuthContext);
 
   const togglePassword = () => setShowPassword(!showPassword);
 
@@ -31,41 +32,49 @@ const Login = () => {
       setError('Vui lòng điền đầy đủ thông tin');
       return;
     }
-    
+
     if (!CLIENT_ID) {
-        setError('Lỗi cấu hình: Thiếu CLIENT_ID. Vui lòng kiểm tra file .env');
-        return;
+      setError('Lỗi cấu hình: Thiếu CLIENT_ID. Vui lòng kiểm tra file .env');
+      return;
     }
 
     try {
       setError(null);
-      setIsLoading(true); // 💡 SPINNER TOÀN TRANG SẼ KÍCH HOẠT TẠI ĐÂY
-      
+      setIsLoading(true);
+
+      // 1. Gọi API Login lấy Token
       const response = await loginAdmin({
-          identifier: loginData.identifier,
-          password: loginData.password,
-          clientId: CLIENT_ID, 
+        identifier: loginData.identifier,
+        password: loginData.password,
+        clientId: CLIENT_ID,
       });
 
-      console.log('Login successful:', response);
+      console.log('Login API successful:', response);
 
-      await refreshAdmin(); 
-      
-      navigate('/dashboard'); 
+      // 2. Cập nhật Context (Quan trọng!)
+      // Hàm login này sẽ set token cho axios, lấy profile, update state admin
+      // Chúng ta chờ nó xong hẳn rồi mới navigate
+
+      await login(response);
+
+      // 3. Chuyển hướng
+      // Lúc này state admin đã có, axios đã có token -> Dashboard sẽ load được
+      console.log('Navigating to dashboard...');
+      navigate('/dashboard', { replace: true }); // Dùng replace để không back lại được login
+
     } catch (err) {
+      console.error("Login Error:", err);
       const errorMessage = err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
       setError(errorMessage);
-      setIsLoading(false); // 💡 Tắt spinner nếu có lỗi
-    } 
-    // Không cần finally(setIsLoading(false)) vì trang sẽ chuyển đi
+      setIsLoading(false); // Chỉ tắt loading khi lỗi
+    }
   };
 
 
   return (
     <div className="flex min-h-screen">
-      {/* 💡 2. THÊM SPINNER TOÀN TRANG */}
-      {/* Nó sẽ che toàn bộ màn hình khi isLoading = true */}
-      {isLoading && <LoadingSpinner fullPage={true} color="#10B981" />} 
+      {/* 2. THÊM SPINNER TOÀN TRANG */}
+      {isLoading && <LoadingSpinner fullPage={true} color="#10B981" />}
 
       {/* Phần bên trái: Hình ảnh */}
       <div className="hidden md:block md:w-1/3 lg:w-1/2">
@@ -87,8 +96,8 @@ const Login = () => {
           </p>
 
           {error && (
-            <div 
-              className="flex items-center justify-between p-3 mb-4 text-sm text-red-800 bg-red-100 rounded-lg" 
+            <div
+              className="flex items-center justify-between p-3 mb-4 text-sm text-red-800 bg-red-100 rounded-lg"
               role="alert"
             >
               <span className="font-medium">{error}</span>
@@ -98,13 +107,14 @@ const Login = () => {
 
           <div className="relative mb-6">
             <input
-              name="identifier" 
+              name="identifier"
               type="text"
               aria-label="Tên đăng nhập"
               placeholder="Email, Số điện thoại hoặc Tên đăng nhập"
               className="w-full p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
               value={loginData.identifier}
               onChange={handleInputChange}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
             />
             {loginData.identifier && (
               <X
@@ -126,8 +136,9 @@ const Login = () => {
               className="w-full p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-shadow"
               value={loginData.password}
               onChange={handleInputChange}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
             />
-            <div 
+            <div
               className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer transition-colors"
               onClick={togglePassword}
               title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
@@ -136,16 +147,14 @@ const Login = () => {
             </div>
           </div>
 
-          {/* 💡 3. ĐƠN GIẢN HÓA NÚT ĐĂNG NHẬP */}
+          {/* 3. ĐƠN GIẢN HÓA NÚT ĐĂNG NHẬP */}
           <button
             onClick={handleLogin}
             disabled={isLoading}
-            className={`w-full bg-green-600 text-white font-semibold py-4 rounded-lg shadow-lg hover:bg-green-700 transition-all transform hover:scale-[1.01] ${
-              isLoading ? 'opacity-60 cursor-not-allowed' : ''
-            }`}
+            className={`w-full bg-green-600 text-white font-semibold py-4 rounded-lg shadow-lg hover:bg-green-700 transition-all transform hover:scale-[1.01] ${isLoading ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
           >
-            {/* Bỏ logic spinner bên trong, chỉ cẩn disable là đủ */}
-            ĐĂNG NHẬP
+            {isLoading ? 'Đang xử lý...' : 'ĐĂNG NHẬP'}
           </button>
         </div>
       </div>

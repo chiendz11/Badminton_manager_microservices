@@ -18,52 +18,53 @@ const CLOUDINARY_ROOT_FOLDER = 'badminton_app';
 /**
  * @description Upload file (dạng Buffer) lên Cloudinary
  * @param {Buffer} fileBuffer - Dữ liệu file dưới dạng Buffer
- * @param {string} folderName - Thư mục Cloudinary (e.g., 'avatars', 'bills')
- * @param {string} publicIdToUse - (Tùy chọn) ID nghiệp vụ của bạn để dùng làm public_id trên Cloudinary
+ * @param {string} uploadFolder - Thư mục Cloudinary con, sẽ được nối vào CLOUDINARY_ROOT_FOLDER (e.g., 'uploaderId/entityId')
+ * @param {string} publicIdToUse - ID nghiệp vụ để dùng làm public_id trên Cloudinary (vd: 'FILE-UUID')
  * @returns {Promise<{publicId: string, url: string, resourceType: string, bytes: number}>} Metadata của file đã upload
  */
-export const uploadFile = (fileBuffer, folderName, publicIdToUse = null) => {
+export const uploadFile = (fileBuffer, uploadFolder, publicIdToUse) => {
     return new Promise((resolve, reject) => {
         
-        // 💡 CẢI TIẾN: Xây dựng options
+        // 1. Xây dựng đường dẫn folder đầy đủ
+        // Sẽ tạo ra folder: badminton_app/uploaderId/entityId
+        const folder = `${CLOUDINARY_ROOT_FOLDER}/${uploadFolder}`;
+        
+        // 2. Xây dựng options
         const uploadOptions = {
-            // Sử dụng thư mục root để đảm bảo tổ chức
-            folder: `${CLOUDINARY_ROOT_FOLDER}/${folderName}`,
-            resource_type: 'auto', // Cloudinary tự động xác định loại file
+            folder: folder, // Thư mục lưu trữ trên Cloudinary
+            public_id: publicIdToUse, // Tên file cuối cùng (sẽ là folder/publicIdToUse)
+            unique_filename: false, // Vì đã cung cấp public_id
+            overwrite: true, // Cho phép ghi đè (tốt nhất cho ID nghiệp vụ)
+            resource_type: 'auto', // Tự động xác định loại tài nguyên
+            tags: ['badminton-app'], // Thêm tag mặc định
         };
-
-        // 💡 Nếu cung cấp publicId, hãy sử dụng nó
-        if (publicIdToUse) {
-            uploadOptions.public_id = publicIdToUse;
-            uploadOptions.overwrite = true; // Cho phép ghi đè nếu ID trùng
-        }
-        // ---------------------------------
-
-        let uploadStream = cloudinary.uploader.upload_stream(
-            uploadOptions, // 💡 Sử dụng options đã xây dựng
+        
+        // 3. Thực hiện upload
+        const uploadStream = cloudinary.uploader.upload_stream(
+            uploadOptions,
             (error, result) => {
-                if (error) {
-                    console.error('Cloudinary Upload Error:', error);
-                    return reject(new Error('Cloudinary upload failed.'));
+                if (result) {
+                    resolve({
+                        // publicId là 'badminton_app/uploaderId/entityId/FILE-UUID'
+                        publicId: result.public_id, 
+                        url: result.secure_url,
+                        resourceType: result.resource_type,
+                        bytes: result.bytes,
+                    });
+                } else {
+                    reject(error);
                 }
-                
-                // 💡 THÊM bytes (fileSize) để lưu vào DB metadata
-                resolve({
-                    publicId: result.public_id, // ID mà Cloudinary trả về (vd: badminton_app/avatars/FILE-uuid-123)
-                    url: result.secure_url,
-                    resourceType: result.resource_type,
-                    bytes: result.bytes, 
-                });
             }
         );
-        // Dùng streamifier để chuyển buffer thành stream và đẩy lên Cloudinary
+
+        // Đẩy buffer vào stream upload
         streamifier.createReadStream(fileBuffer).pipe(uploadStream);
     });
 };
 
 /**
- * @description Xóa file khỏi Cloudinary
- * @param {string} publicId - Public ID của file cần xóa (vd: badminton_app/avatars/FILE-uuid-123)
+ * @description Xóa file trên Cloudinary bằng Public ID
+ * @param {string} publicId - Public ID đầy đủ của file (ví dụ: 'badminton_app/uploaderId/entityId/FILE-UUID')
  * @param {string} resourceType - Loại tài nguyên ('image' | 'raw' | 'video')
  * @returns {Promise<void>}
  */
@@ -96,7 +97,6 @@ export const getPublicUrl = (publicId, options = {}) => {
     return cloudinary.url(publicId, options);
 };
 
-// Hàm lấy nhiều URL (ít dùng trong service này, nhưng có thể cần)
 export const getBulkUrls = (publicIds) => {
     return publicIds.map(id => getPublicUrl(id));
 };

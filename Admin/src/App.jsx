@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { AuthContext } from './contexts/AuthContext.jsx'; 
 import AdminLayout from './components/AdminLayout.jsx'; 
 import SuperAdminRoute from './components/SuperAdminRoute.jsx'; 
-import CenterManagerRoute from './components/CenterManagerRoute.jsx'; // Giữ lại cho /shop
+import CenterManagerRoute from './components/CenterManagerRoute.jsx'; 
 
 // Import Pages
 import Dashboard from "./pages/Dashboard.jsx"; 
@@ -19,14 +19,16 @@ import AdminBillList from './pages/BillManage.jsx';
 import CreateFixedBooking from './pages/CreateFixedBooking.jsx';
 import CourtStatusPage from './pages/centerStatus.jsx';
 
-function App() {
-  // 💡 1. LẤY CẢ 'loading' TỪ CONTEXT
-  const { admin, loading } = useContext(AuthContext); 
-  const isAuthenticated = !!admin; 
-  console.log('Current admin in App.jsx:', admin, isAuthenticated);
+// 💡 IMPORT MỚI: TRANG QUẢN LÝ TRUNG TÂM
+import CenterManagement from './pages/CenterManagement.jsx';
 
-  // 💡 2. GIẢI PHÁP QUAN TRỌNG NHẤT:
-  // (Chờ AuthContext load xong mới render Routes)
+function App() {
+  // 1. LẤY CẢ 'loading' TỪ CONTEXT
+  const { admin, loading } = useContext(AuthContext); 
+  const isAuthenticated = !!admin; 
+  console.log('Current admin in App.jsx:', admin, isAuthenticated);
+
+  // 2. GIẢI PHÁP QUAN TRỌNG NHẤT:
   if (loading) {
     return (
       <div style={{ 
@@ -42,70 +44,68 @@ function App() {
     );
   }
   
-  // (Từ đây trở xuống, 'loading' đã là false,
-  // 'admin' đã có giá trị cuối cùng (hoặc object hoặc null))
-
-  return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
-        
-        {/* 💡 3. BẢO VỆ ROUTE /login */}
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
+        
+        {/* 3. BẢO VỆ ROUTE /login */}
         <Route 
           path="/login" 
           element={
             isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />
           } 
         />
-        
-        {/* GUARD CẤP 1: ADMIN LAYOUT (ÁP DỤNG CHO CẢ SUPER_ADMIN VÀ CENTER_MANAGER) */}
-        <Route element={<AdminLayout />}>
-          
-          {/* 1. CÁC ROUTE CHUNG (CẢ 2 VAI TRÒ ĐỀU THẤY) */}
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/account" element={<Account />} />
-          <Route path="/admin-bill-list" element={<AdminBillList />} />
-          <Route path="/center-status" element={<CourtStatusPage />} />
-          
-          {/* * 💡 4. SỬA LẠI LOGIC:
-           * Bất kỳ route nào CHỈ DÀNH CHO CENTER_MANAGER
-           * (như /shop theo yêu cầu trước) phải được bọc lại.
-           */}
+        
+        {/* GUARD CẤP 1: ADMIN LAYOUT (ÁP DỤNG CHO CẢ SUPER_ADMIN VÀ CENTER_MANAGER) */}
+        <Route element={<AdminLayout />}>
+          
+          {/* 1. CÁC ROUTE CHUNG (CẢ 2 VAI TRÒ ĐỀU THẤY) */}
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/account" element={<Account />} />
+          <Route path="/admin-bill-list" element={<AdminBillList />} />
+          <Route path="/center-status" element={<CourtStatusPage />} />
+          
+          {/* 💡 ROUTE MỚI: QUẢN LÝ TRUNG TÂM */}
+          {/* Component này đã có logic tự lọc: Super Admin thấy hết, Manager chỉ thấy sân của mình */}
+          <Route path="/center-management" element={<CenterManagement />} />
+          
+          {/* 2. ROUTE CHỈ DÀNH CHO CENTER_MANAGER (VÍ DỤ) */}
           <Route element={<CenterManagerRoute />}>
             <Route path="/shop" element={<Shop />}/> 
           </Route>
 
-          {/* 3. ROUTE CHỈ DÀNH CHO SUPER ADMIN (BẢO VỆ CẤP CAO) */}
-          <Route element={<SuperAdminRoute />}>
-            {/* 💡 CHỈ SUPER ADMIN TRUY CẬP CÁC ROUTE NÀY */}
-            <Route path="/report" element={<Report />}/> 
-            <Route path="/stock" element={<Stock />}/> 
-            <Route path="/create-fixed-booking" element={<CreateFixedBooking />} />
-            <Route path="/users-manage" element={<UserManage />} />
-            <Route path="/ratings" element={<Rating />} />
-            <Route path="/news" element={<News />} /> 
-          </Route>
+          {/* 3. ROUTE CHỈ DÀNH CHO SUPER ADMIN (BẢO VỆ CẤP CAO) */}
+          <Route element={<SuperAdminRoute />}>
+            {/* CHỈ SUPER ADMIN TRUY CẬP CÁC ROUTE NÀY */}
+            <Route path="/report" element={<Report />}/> 
+            <Route path="/stock" element={<Stock />}/> 
+            <Route path="/create-fixed-booking" element={<CreateFixedBooking />} />
+            <Route path="/users-manage" element={<UserManage />} />
+            <Route path="/ratings" element={<Rating />} />
+            <Route path="/news" element={<News />} /> 
+          </Route>
 
-          {/* 4. Route lỗi 404 trong khu vực Admin */}
-          <Route path="*" element={
-            <div style={{ padding: '20px', textAlign: 'center' }}>
-              <h1>404</h1>
-              <p>Không tìm thấy trang quản trị này.</p>
-              <Navigate to="/dashboard" replace />
-            </div>
-          } />
-        </Route>
-        
-        <Route path="*" element={
-          <div style={{ padding: '20px', textAlign: 'center' }}>
-              <h1>404</h1>
-              <p>Không tìm thấy trang.</p>
-              <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />
-          </div>
-        } />
-      </Routes>
-    </Router>
-  );
+          {/* 4. Route lỗi 404 trong khu vực Admin */}
+          <Route path="*" element={
+            <div style={{ padding: '20px', textAlign: 'center' }}>
+              <h1>404</h1>
+              <p>Không tìm thấy trang quản trị này.</p>
+              <Navigate to="/dashboard" replace />
+            </div>
+          } />
+        </Route>
+        
+        <Route path="*" element={
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+              <h1>404</h1>
+              <p>Không tìm thấy trang.</p>
+              <Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />
+          </div>
+        } />
+      </Routes>
+    </Router>
+  );
 }
 
 export default App;

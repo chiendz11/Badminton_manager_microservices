@@ -9,6 +9,7 @@ const GRAPHQL_ENDPOINT = "/graphql";
 // Fragment cơ bản cho danh sách (tóm tắt)
 const CENTER_SUMMARY_FRAGMENT = `
   fragment CenterSummary on Center {
+    phone
     centerId
     name
     address
@@ -17,6 +18,7 @@ const CENTER_SUMMARY_FRAGMENT = `
     avgRating
     totalCourts
     isActive
+    centerManagerId
   }
 `;
 

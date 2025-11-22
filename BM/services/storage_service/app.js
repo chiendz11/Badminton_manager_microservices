@@ -23,7 +23,7 @@ app.get('/', (req, res) => {
         version: '1.0'
     });
 });
-app.use('/api/v1/storage', storageRoutes);
+app.use('/api/v1', storageRoutes);
 
 // Xử lý lỗi tập trung
 app.use((err, req, res, next) => {

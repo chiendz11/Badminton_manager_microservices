@@ -1,66 +1,114 @@
-import React, { createContext, useState, useEffect } from "react";
-import { fetchAdminInfo } from "../apis_v2/user_service/user.api.js";
-import { logoutAdmin } from "../apis_v2/auth_serivce/auth.api.js";
+import React, { createContext, useState, useEffect, useMemo } from "react";
+import { fetchAdminInfo } from "../apiV2/user_service/rest/user.api.js";
+import { logoutAdmin } from "../apiV2/auth_service/auth.api.js";
+import { refreshTokenApi } from "../apiV2/auth_service/token.api.js";
+import axiosInstance from "../config/axiosConfig";
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-        const [admin, setAdmin] = useState(null);
-        const [loading, setLoading] = useState(true); // Thêm trạng thái loading
+    const [admin, setAdmin] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-        // Hàm để lấy thông tin user
-        const getAdmin = async () => {
-                try {
-                        setLoading(true);
-                        const data = await fetchAdminInfo();
-                        console.log("[AuthContext] Kết quả fetch user:", data);
-                        if (data) {
-                                // Trạng thái thành công, có dữ liệu user
-                                setAdmin(data);
-                                console.log("[AuthContext] Admin đã được đặt:", data);
-                        } else {
-                                setAdmin(null);
-                                console.log("[AuthContext] Không có admin, đặt admin thành null.");
-                        }
-                } catch (error) {
-                        // Xử lý lỗi mạng hoặc lỗi Server 500 (chưa được Interceptor xử lý)
-                        console.error("Error in AuthContext fetching admin info (Network/Server Error):", error);
+    const initializeAuth = async () => {
+        try {
+            console.log("[AuthContext] Khởi động ứng dụng...");
+            // 1. Gọi Refresh để lấy lại session
+            const data = await refreshTokenApi();
+            const { accessToken, user: authUser } = data;
 
-                        // Nếu có lỗi nghiêm trọng, ta cố gắng logout để xóa mọi token/cookie cũ đề phòng
-                        await logoutAdmin();
-                        setAdmin(null);
-                } finally {
-                        setLoading(false);
-                }
-        };
+            // 2. Cập nhật axios ngay lập tức
+            axiosInstance.setAuthToken(accessToken);
 
-        // Khi ứng dụng khởi chạy, gọi API lấy thông tin user từ cookie
-        useEffect(() => {
-                getAdmin();
-        }, []);
+            // 3. Lấy thông tin chi tiết
+            const profileData = await fetchAdminInfo();
 
-        const login = (adminData) => {
-                setAdmin(adminData);
-        };
+            const fullAdmin = {
+                ...authUser,
+                ...profileData,
+                hasPassword: authUser?.hasPassword ?? false
+            };
+            
+            setAdmin(fullAdmin);
+        } catch (error) {
+            console.warn("[AuthContext] Chưa đăng nhập hoặc phiên hết hạn:", error.message);
+            setAdmin(null);
+            // Quan trọng: Xóa token cũ trong axios nếu có
+            axiosInstance.clearAuthToken();
+        } finally {
+            setLoading(false);
+        }
+    };
 
-        const logout = async () => {
-                try {
-                        await logoutAdmin(); // Gọi API logout để xóa cookie trên server
-                        setAdmin(null);
-                } catch (error) {
-                        console.error("Logout error:", error);
-                        setAdmin(null); // Đảm bảo admin được xóa ngay cả khi API logout thất bại
-                }
-        };
+    useEffect(() => {
+        initializeAuth();
+    }, []);
 
-        // Hàm để cập nhật thông tin user sau khi chỉnh sửa profile
-        const refreshAdmin = async () => {
-                await getAdmin();
-        };
+    // 💡 SỬA HÀM LOGIN: Đảm bảo đồng bộ token trước khi set state
+    const login = async (authData) => {
+        try {
+            setLoading(true);
+            const { accessToken, user } = authData;
+            
+            // 1. CỰC KỲ QUAN TRỌNG: Set token cho axios trước tiên!
+            // Để các request sau đó (như fetchAdminInfo) có header Authorization
+            axiosInstance.setAuthToken(accessToken);
+            
+            console.log("[AuthContext] Token set, fetching profile...");
 
-        return (
-                <AuthContext.Provider value={{ admin, setAdmin, login, logout, loading, refreshAdmin }}>
-                        {children}
-                </AuthContext.Provider>
-        );
+            // 2. Sau đó mới gọi API lấy profile
+            const profileData = await fetchAdminInfo();
+            
+            const fullAdmin = { ...user, ...profileData };
+            
+            // 3. Cuối cùng mới set state để kích hoạt re-render và chuyển trang
+            setAdmin(fullAdmin);
+            
+            return true; // Trả về true để Login.jsx biết đường redirect
+        } catch (e) {
+            console.error("[AuthContext] Login error:", e);
+            // Nếu lỗi, rollback
+            axiosInstance.clearAuthToken();
+            setAdmin(null);
+            throw e;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const logout = async () => {
+        try {
+            await logoutAdmin();
+        } catch (error) {
+            console.error("Logout error:", error);
+        } finally {
+            axiosInstance.clearAuthToken();
+            setAdmin(null);
+            // Optional: Reload trang để xóa sạch state trong memory
+            // window.location.reload(); 
+        }
+    };
+
+    const refreshAdmin = async () => {
+        if (!admin) return;
+        try {
+            const profileData = await fetchAdminInfo();
+            setAdmin(prev => ({ ...prev, ...profileData }));
+        } catch (e) { console.error(e); }
+    };
+
+    const contextValue = useMemo(() => ({
+        admin, 
+        setAdmin, 
+        login, 
+        logout, 
+        loading, 
+        refreshAdmin
+    }), [admin, loading]);
+
+    return (
+        <AuthContext.Provider value={contextValue}>
+            {!loading && children}
+        </AuthContext.Provider>
+    );
 };

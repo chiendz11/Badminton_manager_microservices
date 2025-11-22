@@ -7,7 +7,7 @@ export const UserService = {
     async findUserById(userId) {
         // ... (Giữ nguyên logic findUserById)
         const cleanUserId = userId
-            ? userId.trim().toLowerCase()
+            ? userId.trim()
             : null;
 
         console.log(`[UserService] Bắt đầu tìm kiếm User ID (UUID, chuẩn hóa): ${cleanUserId}`);
@@ -95,7 +95,7 @@ export const UserService = {
 
     // 💡 HÀM MỚI: Cập nhật Avatar (Bao gồm Upload và Xóa file cũ)
     async updateAvatarData(userId, fileBuffer, originalname) {
-        const cleanUserId = userId.trim().toLowerCase();
+        const cleanUserId = userId.trim();
 
         if (!cleanUserId || !fileBuffer) {
             throw new Error("Dữ liệu upload không hợp lệ.");

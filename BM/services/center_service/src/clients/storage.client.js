@@ -1,37 +1,76 @@
-// src/clients/storage.client.js
-
-// 💡 Import instance đã tạo từ utils
-import internalAxios from '../utils/internal.api.js'; 
+import axios from 'axios';
+import FormData from 'form-data';
 import { envConfig } from '../configs/env.config.js';
 
-// Vẫn cần Base URL của Storage Service
-const STORAGE_URL = envConfig.STORAGE_SERVICE_URL;
+// URL của Storage Service
+const STORAGE_BASE_URL = envConfig.STORAGE_SERVICE_URL || 'http://localhost:5002/api/v1/storage';
+
+// Header xác thực nội bộ
+const getInternalHeaders = () => ({
+    'x-service-secret': envConfig.INTERNAL_AUTH_SECRET,
+    'x-service-name': 'center-service',
+});
 
 /**
- * @description Lấy Public URL cho nhiều File ID (Bulk-get API).
+ * @description Upload File (Proxy) lên Storage Service
+ * @param {Buffer} fileBuffer Dữ liệu file
+ * @param {string} originalName Tên file gốc
+ * @param {string} fileType Loại file (vd: 'center_logo', 'court_image')
+ * @param {string} uploaderId ID người dùng/entity upload
+ * @param {string} [entityId] ID thực thể liên quan (vd: centerId, dùng để phân thư mục)
+ * @returns {Promise<object>} Đối tượng file đã lưu ({ publicFileId, publicUrl, ... })
  */
-export const getBulkUrls = async (fileIds) => {
+export const uploadFileToStorage = async (fileBuffer, originalName, fileType, uploaderId, entityId) => {
     try {
-        // 💡 Chỉ cần gọi internalAxios.post và truyền Endpoint
-        const response = await internalAxios.post(
-            `${STORAGE_URL}/bulk-urls`,
-            { fileIds }
-        );
-        return response.data;
+        const formData = new FormData();
+        formData.append('file', fileBuffer, originalName);
+        formData.append('uploaderId', uploaderId);
+        formData.append('fileType', fileType);
+        // ✅ Truyền entityId để Storage Service sử dụng trong việc tạo folder trên Cloudinary
+        if (entityId) formData.append('entityId', entityId); 
+        formData.append('tags', 'center-service-upload');
+
+        const response = await axios.post(`${STORAGE_BASE_URL}/files`, formData, {
+            headers: {
+                ...getInternalHeaders(),
+                ...formData.getHeaders()
+            },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity
+        });
+
+        return response.data.file; // { publicFileId, publicUrl, ... }
     } catch (error) {
-        console.error("[StorageClient] Lỗi khi gọi Bulk URLs:", error.message);
-        throw new Error('Failed to fetch file URLs from Storage Service.', { cause: 503 }); 
+        console.error('[StorageClient] Upload Error:', error.response?.data || error.message);
+        throw new Error('Failed to upload file to Storage Service.');
     }
 };
 
-/**
- * @description Yêu cầu Storage Service xóa một file cụ thể (DELETE API).
- */
-export const deleteFile = async (fileId) => {
+// 2. Delete File
+export const deleteFileFromStorage = async (fileId) => {
     try {
-        // 💡 Chỉ cần gọi internalAxios.delete và truyền Endpoint
-        await internalAxios.delete(`${STORAGE_URL}/${fileId}`);
+        await axios.delete(`${STORAGE_BASE_URL}/${fileId}`, {
+            headers: getInternalHeaders()
+        });
+        return true;
     } catch (error) {
-        console.warn(`[StorageClient] WARNING: Failed to delete file ID ${fileId}:`, error.message);
+        console.warn(`[StorageClient] Delete Warning: ${error.message}`);
+        return false;
+    }
+};
+
+// 3. Get Bulk URLs
+export const getBulkUrls = async (fileIds) => {
+    if (!fileIds || !fileIds.length) return {};
+    try {
+        const response = await axios.post(`${STORAGE_BASE_URL}/bulk-urls`, { fileIds }, {
+            headers: getInternalHeaders()
+        });
+        const map = {};
+        response.data.forEach(item => { if(item.publicFileId) map[item.publicFileId] = item.publicUrl; });
+        return map;
+    } catch (error) {
+        console.error('[StorageClient] Bulk URL Error:', error.response?.data || error.message);
+        return {};
     }
 };
