@@ -21,20 +21,35 @@ export const AuthService = {
         let newUser = null;
 
         try {
-            // --- BƯỚC 1: TẠO USER TRONG AUTH SERVICE ---
+            // --- BƯỚC 1: TẠO USER TRONG AUTH SERVICE (publicUserId = null ban đầu) ---
+            // Chúng ta không thể gán publicUserId ở đây vì cần id vừa được tạo
             newUser = await prisma.user.create({
                 data: {
                     email: data.email,
                     username: data.username,
                     passwordHash,
                     role: Role.USER,
+                    // publicUserId để null ban đầu
                 },
                 select: { id: true, email: true, username: true, role: true, createdAt: true, isVerified: true }
             });
+            
+            // 💡 BƯỚC 1.1: TẠO VÀ CẬP NHẬT publicUserId NGAY LẬP TỨC
+            const publicUserId = `USER-${newUser.id}`;
+
+            await prisma.user.update({
+                where: { id: newUser.id },
+                data: { publicUserId: publicUserId }
+            });
+
+            // Cập nhật đối tượng newUser trả về (để BƯỚC 2 dùng)
+            newUser.publicUserId = publicUserId;
+
 
             // --- BƯỚC 2: GỌI SANG USER SERVICE ĐỂ TẠO PROFILE ---
             const profileData = {
-                userId: newUser.id,
+                // CHÚ Ý: Đã đổi từ newUser.id (UUID nội bộ) sang publicUserId
+                userId: newUser.publicUserId, 
                 name: data.name,
                 phone_number: data.phone_number,
 
@@ -43,6 +58,7 @@ export const AuthService = {
                 username: newUser.username
             };
 
+            // Giả định UserService.createProfile nhận publicUserId
             await UserService.createProfile(profileData);
 
             // --- BƯỚC 3: TẠO VERIFICATION TOKEN (NẾU BƯỚC 2 THÀNH CÔNG) ---
@@ -51,7 +67,7 @@ export const AuthService = {
 
             await prisma.verificationToken.create({
                 data: {
-                    userId: newUser.id,
+                    userId: newUser.id, // Vẫn dùng UUID nội bộ
                     token: verificationToken,
                     expiresAt: expiresAt,
                 }
@@ -60,42 +76,44 @@ export const AuthService = {
             // --- BƯỚC 4: GỬI EMAIL (NẾU BƯỚC 2 & 3 THÀNH CÔNG) ---
             await EmailService.sendVerificationEmail(newUser.email, verificationToken);
 
-            return newUser; // Trả về newUser nếu mọi thứ thành công
+            // Trả về newUser với publicUserId đã được gán
+            return { ...newUser, publicUserId }; 
         } catch (error) {
 
-            // --- 💡 SỬA LỖI LOGIC ROLLBACK ---
+            // --- SỬA LỖI LOGIC ROLLBACK ---
             if (newUser && newUser.id) {
                 // Lỗi xảy ra *sau khi* newUser đã được tạo
                 console.warn(`[AuthService-SAGA] Bắt đầu Rollback do lỗi: ${error.message}`);
 
                 try {
                     // 💡 BƯỚC 1: XÓA 'CON' (VerificationToken) TRƯỚC
-                    // (Chúng ta dùng deleteMany phòng trường hợp logic tạo token bị lặp)
                     await prisma.verificationToken.deleteMany({
                         where: { userId: newUser.id }
                     });
 
                     // 💡 BƯỚC 2: XÓA 'CHA' (User) SAU
-                    // (Bây giờ sẽ thành công vì 'con' đã bị xóa)
+                    // Rollback sẽ xóa cả user và publicUserId vừa tạo.
                     await prisma.user.delete({
                         where: { id: newUser.id }
                     });
 
                     console.warn(`[AuthService-SAGA] Rollback (Prisma) thành công: Đã xóa User và Token.`);
 
-                    // 💡 BƯỚC 3 (Nâng cao): Chúng ta cũng nên rollback UserService
-                    // (Tuy nhiên, nếu lỗi là do email (Bước 4), thì UserService đã
-                    // tạo profile thành công. Tạm thời chúng ta chấp nhận
-                    // có 1 profile "mồ côi" bên UserService, chờ đợt dọn dẹp sau)
+                    // 💡 BƯỚC 3 (Nâng cao): Nếu lỗi xảy ra sau bước 2 (gọi UserService)
+                    // thì profile "mồ côi" vẫn còn.
+                    // Bạn cần thêm logic gọi UserService.deleteProfile(newUser.publicUserId) ở đây.
+                    // Ví dụ:
+                    // if (error.message.includes('UserService error')) {
+                    //     await UserService.deleteProfile(newUser.publicUserId);
+                    // }
 
                 } catch (rollbackError) {
-                    // Lỗi nghiêm trọng: Rollback thất bại
                     console.error(`[AuthService-SAGA] LỖI ROLLBACK NGHIÊM TRỌNG:`, rollbackError);
                 }
             }
             // --- HẾT LOGIC ROLLBACK ---
 
-            // Ném lỗi gốc (lỗi Email) để Controller có thể bắt được
+            // Ném lỗi gốc để Controller có thể bắt được
             throw error;
         }
     },
