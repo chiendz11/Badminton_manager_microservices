@@ -1,6 +1,7 @@
 import { OAuth2Client } from 'google-auth-library';
 import prisma from '../prisma.js';
-import { Role, Prisma } from '@prisma/client';
+import pkg from '@prisma/client';
+const { Role, Prisma } = pkg;
 import { v4 as uuidv4 } from 'uuid';
 import { add } from 'date-fns';
 import { TokenService } from './token.service.js';

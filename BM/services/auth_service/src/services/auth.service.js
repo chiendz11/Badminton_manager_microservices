@@ -1,7 +1,8 @@
 // services/auth_service/src/services/auth.service.js (ĐÃ SỬA ĐỔI)
 
 import bcrypt from 'bcrypt';
-import { Role } from '@prisma/client';
+import pkg from '@prisma/client';
+const { Role } = pkg;
 import prisma from '../prisma.js';
 import { add, isPast } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
