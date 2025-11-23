@@ -82,13 +82,18 @@ export const OAuthService = {
                 authUser = await prisma.user.findUnique({ where: { email } });
 
                 if (authUser) {
-                    // Email đã tồn tại.
-                    // (Logic Transaction để cập nhật User + tạo ExternalIdentity + xóa Token)
+                    // Email đã tồn tại. (Người dùng cũ, nhưng chưa liên kết Google)
+                    // Liên kết Google và cập nhật trạng thái đã xác minh.
 
                     await prisma.$transaction([
                         prisma.user.update({
                             where: { id: authUser.id },
-                            data: { isVerified: true, isActive: true }
+                            // Đảm bảo publicUserId đã tồn tại, nếu chưa thì tạo
+                            data: { 
+                                isVerified: true, 
+                                isActive: true,
+                                publicUserId: authUser.publicUserId || `USER-${authUser.id}`
+                            }
                         }),
                         prisma.externalIdentity.create({
                             data: {
@@ -101,6 +106,9 @@ export const OAuthService = {
                             where: { userId: authUser.id }
                         })
                     ]);
+                    // Cập nhật lại đối tượng authUser để dùng cho bước sau
+                    authUser = await prisma.user.findUnique({ where: { id: authUser.id } });
+                    
                     authUser.isVerified = true;
                     authUser.isActive = true;
 
@@ -121,12 +129,23 @@ export const OAuthService = {
                             role: Role.USER,
                             isVerified: true,
                             isActive: true,
+                            // publicUserId để null ban đầu
                         }
-                        // 💡 XÓA "nested create" khỏi đây
                     });
 
+                    // 💡 BƯỚC 1.1: TẠO VÀ CẬP NHẬT publicUserId NGAY LẬP TỨC
+                    const publicUserId = `USER-${authUser.id}`;
+
+                    await prisma.user.update({
+                        where: { id: authUser.id },
+                        data: { publicUserId: publicUserId }
+                    });
+
+                    // Cập nhật đối tượng authUser (để dùng trong BƯỚC 2)
+                    authUser.publicUserId = publicUserId;
+
+
                     // 💡 BƯỚC 1.5: TẠO EXTERNAL IDENTITY (PRISMA)
-                    // (Chúng ta gán nó vào biến 'externalIdentity' để dùng trong 'catch')
                     externalIdentity = await prisma.externalIdentity.create({
                         data: {
                             userId: authUser.id,
@@ -137,7 +156,8 @@ export const OAuthService = {
 
                     // 💡 BƯỚC 2: GỌI TẠO USER PROFILE (MONGOOSE)
                     const profileData = {
-                        userId: authUser.id,
+                        // CHÚ Ý: Đã đổi từ authUser.id (UUID nội bộ) sang publicUserId
+                        userId: authUser.publicUserId, 
                         name: nameFromGoogle || username,
                         phone_number: null, // Vẫn là null (vì Google không cấp)
 
@@ -172,7 +192,8 @@ export const OAuthService = {
             return {
                 refreshToken,
                 user: {
-                    id: authUser.id,
+                    id: authUser.id, // Vẫn là ID nội bộ cho auth service
+                    publicUserId: authUser.publicUserId, // 💡 Trả về publicUserId
                     username: authUser.username,
                     email: authUser.email,
                     role: authUser.role
@@ -181,11 +202,6 @@ export const OAuthService = {
 
         } catch (error) {
             // 💡 --- SAGA ROLLBACK (ĐÃ SỬA) ---
-
-            // Chỉ rollback nếu cả 'authUser' VÀ 'externalIdentity'
-            // đã được tạo *trong* khối 'try' này.
-            // (findUnique ở đầu hàm sẽ không set 'externalIdentity'
-            // nếu nó tìm thấy 'authUser' qua email)
 
             // 'authUser && externalIdentity' là điều kiện an toàn nhất
             // để biết chúng ta đang ở trong luồng SAGA "Tạo User Mới"
@@ -196,15 +212,19 @@ export const OAuthService = {
                     await prisma.externalIdentity.delete({
                         where: { id: externalIdentity.id }
                     });
-                    // 💡 BƯỚC 2: Xóa 'cha' (User) sau
+                    
+                    // 💡 BƯỚC 2: Xóa 'cha' (User) sau (tự động xóa publicUserId)
                     await prisma.user.delete({
                         where: { id: authUser.id }
                     });
+                    
                     console.warn(`[OAuthService-SAGA] Rollback thành công: Đã xóa User (id: ${authUser.id}) và ExternalIdentity.`);
+                    
+                    // 💡 BƯỚC 3 (Nâng cao): Thêm logic Rollback cho UserService.deleteProfile(authUser.publicUserId)
+                    // nếu lỗi xảy ra sau BƯỚC 2 (gọi UserService).
+
                 } catch (rollbackError) {
-                    // Lỗi nghiêm trọng: Rollback thất bại
                     console.error(`[OAuthService-SAGA] LỖI ROLLBACK NGHIÊM TRỌNG:`, rollbackError);
-                    // (Ở đây bạn có thể log ra Sentry hoặc hệ thống cảnh báo)
                 }
             }
 
