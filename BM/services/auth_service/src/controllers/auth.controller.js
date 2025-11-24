@@ -23,18 +23,37 @@ export const AuthController = {
                 user: newUser
             });
         } catch (error) {
-            // Xử lý lỗi trùng lặp (P2002) từ Prisma
+            // Log lỗi chi tiết để debug ở Server
+            console.error("[AuthController] Lỗi khi tạo người dùng:", error);
+
+            // 💡 Lấy thông báo lỗi chi tiết nhất: từ error.message (lỗi throw) 
+            // HOẶC từ error.response.data.message (lỗi Axios API)
+            const serviceErrorMessage = error.message || error.response?.data?.message || "";
+
+
+            // 1. Xử lý lỗi trùng lặp (P2002) từ Prisma (Auth Service DB)
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
                 return res.status(409).json({ message: "Email hoặc Tên đăng nhập đã được sử dụng." });
             }
-            // Xử lý lỗi Service cụ thể (ví dụ: lỗi gửi email)
-            if (error.message.includes("Không thể gửi email")) {
+            
+            // 2. 💡 XỬ LÝ LỖI CONFLICT TỪ SERVICE KHÁC (UserService)
+            // Nếu Service layer ném ra Error với nội dung chỉ ra trùng lặp
+            if (serviceErrorMessage.includes("Duplicate Key") || serviceErrorMessage.includes("đã tồn tại")) {
+                 // Gửi mã 409 (Conflict) vì đây là lỗi trùng lặp
+                 return res.status(409).json({ message: "Email hoặc Tên đăng nhập đã được sử dụng." });
+            }
+
+            // 3. Xử lý lỗi Service cụ thể (ví dụ: lỗi gửi email)
+            if (serviceErrorMessage.includes("Không thể gửi email")) {
                 return res.status(503).json({ message: "Lỗi dịch vụ email. Vui lòng thử lại sau." });
             }
-            // Xử lý lỗi Validation nội bộ từ các Service khác (nếu có, ví dụ: tạo profile)
+            
+            // 4. Xử lý lỗi Validation nội bộ từ các Service khác (nếu có, ví dụ: tạo profile)
             if (error.isUserValidation) {
                 return res.status(400).json({ message: error.message });
             }
+            
+            // 5. Các lỗi khác không được xử lý cụ thể sẽ chuyển sang Error Handler (thường là 500)
             next(error);
         }
     },

@@ -144,7 +144,7 @@ export const UserController = {
             });
         } catch (error) {
             if (error.code === 11000) {
-                return res.status(409).json({ message: "Lỗi: User ID hoặc Email đã tồn tại (Duplicate Key)." });
+                return res.status(409).json({ message: "Lỗi: Username hoặc Email đã tồn tại (Duplicate Key)." });
             }
             console.error("[UserController] Lỗi Server khi tạo profile:", error);
             res.status(500).json({ message: "Lỗi Server nội bộ khi tạo profile." });

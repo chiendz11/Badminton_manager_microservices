@@ -247,15 +247,19 @@ export const AuthService = {
         });
         return true;
     },
-    changePassword: async (userId, oldPassword, newPassword) => {
-        // 1. Tìm user (Dùng findUnique vì userId là @id và unique)
-        // file schema.prisma của bạn xác nhận `id` là @id @db.Uuid
+    changePassword: async (publicUserId, oldPassword, newPassword) => {
+        // 1. Tìm user (Dùng publicUserId)
         const user = await prisma.user.findUnique({
-            where: { id: userId }
+            where: { publicUserId: publicUserId } // ĐÃ SỬA: Dùng publicUserId
         });
 
         if (!user) {
             throw new Error("USER_NOT_FOUND");
+        }
+        
+        // 💡 KIỂM TRA: Nếu user không có passwordHash (ví dụ: đăng nhập bằng OAuth), không cho đổi pass
+        if (!user.passwordHash) {
+             throw new Error("PASSWORD_NOT_SET");
         }
 
         // 2. Kiểm tra mật khẩu cũ
@@ -269,18 +273,16 @@ export const AuthService = {
         const newPasswordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
         // 4. Cập nhật mật khẩu VÀ xóa mọi Refresh Token (Bảo mật)
-        // 💡 Sử dụng Transaction để đảm bảo cả 2 cùng thành công
-        // (schema.prisma của bạn có model `RefreshToken`)
+        // 💡 QUAN TRỌNG: Phải dùng user.id (UUID nội bộ) cho các thao tác CRUD của Prisma
         await prisma.$transaction([
-            // a. Cập nhật pass mới
+            // a. Cập nhật pass mới (Dùng user.id nội bộ)
             prisma.user.update({
-                where: { id: userId },
+                where: { id: user.id }, // ĐÃ SỬA: Dùng user.id
                 data: { passwordHash: newPasswordHash }
             }),
-            // b. Xóa tất cả Refresh Token của user này
-            // (Buộc đăng nhập lại trên các thiết bị khác)
+            // b. Xóa tất cả Refresh Token của user này (Dùng user.id nội bộ)
             prisma.refreshToken.deleteMany({
-                where: { userId: userId }
+                where: { userId: user.id } // ĐÃ SỬA: Dùng user.id
             })
         ]);
 

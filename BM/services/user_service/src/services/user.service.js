@@ -59,7 +59,7 @@ export const UserService = {
     // Cập nhật thông tin profile cơ bản (name, phone_number, etc.)
     async updateProfile(userId, dataToUpdate) {
         // ... (Giữ nguyên logic updateProfile)
-        const cleanUserId = userId.trim().toLowerCase();
+        const cleanUserId = userId.trim();
 
         try {
             const updatedUser = await User.findOneAndUpdate(
