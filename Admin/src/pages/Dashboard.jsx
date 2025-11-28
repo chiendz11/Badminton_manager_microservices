@@ -116,6 +116,7 @@ const DashboardAdmin = () => {
             { title: 'Quản lý khách hàng', path: '/users-manage', roles: ['super_admin'] },
             { title: 'Quản lý tin tức', path: '/news', roles: ['super_admin'] },
             { title: 'Quản lý đánh giá', path: '/ratings', roles: ['super_admin'] },
+            {title: 'Quản lý Center Manager', path: '/center-manager-management', roles: ['super_admin'] }
         ];
 
         return allFeatures.filter(feature => feature.roles.includes(admin.role));

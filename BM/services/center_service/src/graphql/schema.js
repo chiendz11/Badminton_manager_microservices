@@ -28,8 +28,9 @@ export const typeDefs = gql`
         googleMapUrl: String
         isActive: Boolean
         logoFileId: String
-        imageFileIds: [String] # Đã sửa từ image_file_ids
+        imageFileIds: [String] 
         pricing: PricingInput
+        centerManagerId: String # ✅ ĐÃ THÊM TRƯỜNG NÀY ĐỂ FIX LỖI
     }
 
     extend type Mutation {
@@ -41,9 +42,10 @@ export const typeDefs = gql`
             totalCourts: Int,
             facilities: [String],
             logoFileId: String,
-            imageFileIds: [String], # Đã sửa từ image_file_ids
+            imageFileIds: [String], 
             googleMapUrl: String,
-            pricing: PricingInput
+            pricing: PricingInput,
+            centerManagerId: String # Cho phép truyền manager ngay lúc tạo (nếu cần)
         ): Center!
 
         updateCenter(centerId: String!, data: UpdateCenterInput!): Center!
@@ -64,7 +66,7 @@ export const typeDefs = gql`
         
         logoFileId: String
         logoUrl: String 
-        imageFileIds: [String] # Đã sửa từ image_file_ids
+        imageFileIds: [String]
         imageUrlList: [String]
         
         avgRating: Float

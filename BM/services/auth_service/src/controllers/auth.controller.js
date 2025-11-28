@@ -234,4 +234,109 @@ export const AuthController = {
             next(error);
         }
     },
+    /**
+     * POST /admin/users: Tạo người dùng đặc biệt (Center Manager) từ Admin.
+     * Endpoint này đã được Gateway bảo vệ bằng role (Admin/SuperAdmin).
+     */
+    /**
+     * POST /admin/users: Tạo tài khoản Center Manager.
+     */
+    createManagerByAdmin: async (req, res) => {
+        try {
+            // 💡 Nhận thêm username
+            const { name, email, username, password, phone_number } = req.body; 
+            
+            // 1. Validate Username (Best Practice: Regex)
+            // Chỉ cho phép chữ thường, số, gạch dưới, gạch ngang. 3-20 ký tự.
+            if (username) {
+                const usernameRegex = /^[a-z0-9_-]{3,20}$/;
+                if (!usernameRegex.test(username)) {
+                    return res.status(400).json({ 
+                        message: "Username không hợp lệ. (3-20 ký tự, chỉ dùng a-z, 0-9, _, -)" 
+                    });
+                }
+            } else {
+                 return res.status(400).json({ message: "Username là bắt buộc." });
+            }
+
+            // 2. Gọi Service (Role CENTER_MANAGER sẽ được gán cứng ở Service hoặc ở đây)
+            const newManager = await AuthService.createManager({
+                name, 
+                email, 
+                username: username.toLowerCase(), // 💡 Luôn lưu lowercase
+                password, 
+                phone_number
+            });
+
+            res.status(201).json({
+                success: true,
+                message: "Tạo Center Manager thành công.",
+                user: newManager
+            });
+
+        } catch (error) {
+            console.error("[AuthController] Lỗi khi tạo Center Manager:", error);
+            const serviceErrorMessage = error.message || error.response?.data?.message || "";
+            
+            // Xử lý lỗi trùng lặp từ Prisma
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                const target = error.meta.target.includes('email') ? 'Email' : 
+                               error.meta.target.includes('username') ? 'Tên đăng nhập (Username)' : 'Dữ liệu';
+                return res.status(409).json({ message: `${target} đã tồn tại.` });
+            }
+            
+            // Xử lý lỗi trùng lặp từ User Service (nếu có)
+            if (serviceErrorMessage.includes("409") || serviceErrorMessage.includes("Duplicate")) {
+                return res.status(409).json({ message: "Email hoặc Username đã tồn tại trong hệ thống." });
+            }
+
+            res.status(500).json({ 
+                message: serviceErrorMessage || "Lỗi Server nội bộ." 
+            });
+        }
+    },
+    /**
+     * PUT /admin/users/:userId/password: Đặt lại mật khẩu cho người dùng bất kỳ.
+     * Chỉ được gọi bởi Admin (Gateway đã kiểm soát).
+     * KHÔNG yêu cầu mật khẩu cũ.
+     */
+    adminResetPassword: async (req, res, next) => {
+        try {
+            const { userId } = req.params; // publicUserId của Center Manager
+            const { newPassword } = req.body;
+            
+            // 1. Kiểm tra input cơ bản
+            if (!newPassword) {
+                return res.status(400).json({ message: "Mật khẩu mới là bắt buộc." });
+            }
+            if (!userId) {
+                return res.status(400).json({ message: "User ID là bắt buộc." });
+            }
+
+            // 2. Gọi Service để xử lý logic: tìm, hash, cập nhật, xóa token
+            await AuthService.adminResetPassword(userId, newPassword);
+
+            // 3. Trả về thành công
+            res.status(200).json({
+                success: true,
+                message: "Đã đặt lại mật khẩu thành công."
+            });
+
+        } catch (error) {
+            console.error("[AuthController] Lỗi khi Admin đặt lại mật khẩu:", error);
+            
+            if (error.message === 'USER_NOT_FOUND') {
+                return res.status(404).json({ message: "Không tìm thấy người dùng." });
+            }
+            
+            // Xử lý lỗi validation (nếu bạn dùng validation middleware ở Auth Service)
+            if (error.name === 'ValidationError') {
+                 return res.status(400).json({ message: error.message });
+            }
+
+            res.status(500).json({ 
+                message: "Lỗi Server nội bộ khi đặt lại mật khẩu." 
+            });
+        }
+    },
 };

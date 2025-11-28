@@ -57,7 +57,7 @@ router.get("/users/me",
 );
 
 // 3. GET /api/users/:userId (Admin xem user cụ thể)
-router.get("/users/:userId",
+router.patch("/users/:userId",
     authenticate,
     authorize([GATEWAY_ROLES.SUPER_ADMIN]),
     userProxy

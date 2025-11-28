@@ -16,27 +16,47 @@ const CenterService = {
      * @description Tạo trung tâm mới và gán ID quản lý
      */
     async createCenter(centerManagerId, centerData) {
-        const centerId = `CENTER-${uuidv4()}`;
+        const centerId = `CENTER-${uuidv4()}`;
+        // Lấy số sân mong muốn từ dữ liệu đầu vào
+        const totalCourts = centerData.totalCourts ? parseInt(centerData.totalCourts) : 0; 
 
-        try {
-            const newCenter = new Center({
-                centerId,
-                centerManagerId,
-                ...centerData, 
-            });
+        try {
+            const newCenter = new Center({
+                centerId,
+                centerManagerId,
+                ...centerData, 
+                totalCourts: totalCourts // Đảm bảo giá trị được gán vào Center
+            });
 
-            await newCenter.save();
-            
-            // 💡 Trả về raw data (chứa file_id), không cần convert sang URL
-            return newCenter.toObject();
-
-        } catch (error) {
-            if (error.code === 11000) {
-                throw new Error('Center already exists (duplicate key).', { cause: 409 }); 
+            await newCenter.save();
+            
+            // 💡 BƯỚC MỚI: TẠO CÁC BẢN GHI SÂN (COURTS)
+            if (totalCourts > 0) {
+                const courtsToCreate = [];
+                for (let i = 1; i <= totalCourts; i++) {
+                    courtsToCreate.push({
+                        centerId: centerId,
+                        courtId: `COURT-${uuidv4()}`,
+                        name: `Sân ${i}`,
+                        type: 'thảm', // Lấy từ default trong Court Model
+                        isActive: true 
+                    });
+                }
+                // Tối ưu bằng insertMany
+                await Court.insertMany(courtsToCreate);
+                console.log(`[CenterService] Successfully created ${totalCourts} courts for center ${centerId}`);
             }
-            throw error;
-        }
-    },
+
+            // 💡 Trả về raw data (chứa file_id), không cần convert sang URL
+            return newCenter.toObject();
+
+        } catch (error) {
+            if (error.code === 11000) {
+                throw new Error('Center already exists (duplicate key).', { cause: 409 }); 
+            }
+            throw error;
+        }
+    },
 
     /**
      * @description Lấy danh sách tất cả trung tâm (Raw Data)
@@ -141,16 +161,6 @@ const CenterService = {
         return updatedCenter;
     },
 
-    async createCenter(centerManagerId, centerData) {
-        const centerId = `CENTER-${uuidv4()}`;
-        const newCenter = new Center({
-            centerId,
-            centerManagerId,
-            ...centerData, 
-        });
-        await newCenter.save();
-        return newCenter.toObject();
-    },
 
     // 💡 LOGIC UPDATE CÓ XỬ LÝ FILE RÁC
     async updateCenterInfo(centerId, updateData) {
@@ -212,12 +222,6 @@ const CenterService = {
     async getAllCenters() {
         return await Center.find().lean();
     },
-
-    async getCenterDetails(centerId) {
-        const center = await Center.findOne({ centerId }).lean();
-        if(center) center.courts = await Court.find({ centerId }).lean();
-        return center;
-    }
 };
 
 export default CenterService;

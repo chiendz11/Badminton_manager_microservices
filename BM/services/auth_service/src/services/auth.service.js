@@ -288,4 +288,94 @@ export const AuthService = {
 
         return true;
     },
+
+    /**
+     * HÀM MỚI: Tạo Center Manager (từ luồng Admin).
+     * Luôn gán role cố định là CENTER_MANAGER.
+     */
+    createManager: async (data) => {
+        const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
+        let newAuthUser = null;
+
+        try {
+            // Tạo ID public format chuẩn
+            const publicUserId = `USER-${uuidv4()}`;
+
+            // 1. Tạo User trong Auth DB (PostgreSQL)
+            newAuthUser = await prisma.user.create({
+                data: {
+                    publicUserId,
+                    email: data.email,
+                    username: data.username, // 💡 Lưu username
+                    passwordHash,
+                    role: Role.CENTER_MANAGER, // 🔒 CỐ ĐỊNH ROLE
+                    isActive: true,
+                    isVerified: true, // 💡 Admin tạo thì auto verify
+                }
+            });
+
+            // 2. Gọi Internal API sang User Service (MongoDB) để tạo Profile
+            const profileData = {
+                userId: publicUserId,
+                name: data.name,
+                email: data.email,
+                username: data.username, // 💡 Truyền username sang
+                phone_number: data.phone_number,
+                role: Role.CENTER_MANAGER
+            };
+            
+            const newProfile = await UserService.createProfile(profileData);
+            
+            // 3. Trả về kết quả gộp
+            return {
+                ...newAuthUser,
+                ...newProfile
+            };
+
+        } catch (error) {
+            console.error("[AuthService] Lỗi createManager:", error);
+            
+            // COMPENSATION (Rollback): Nếu tạo profile bên MongoDB lỗi, xóa user bên Postgres
+            if (newAuthUser) {
+                 console.warn(`[AuthService] Rollback: Xóa Auth User ${newAuthUser.id}`);
+                 await prisma.user.delete({ where: { id: newAuthUser.id } });
+            }
+            throw error;
+        }
+    },
+    /**
+     * HÀM MỚI: Đặt lại mật khẩu cho người dùng (Reset Password)
+     * @param {string} publicUserId - publicUserId của tài khoản cần đổi
+     * @param {string} newPassword - Mật khẩu mới chưa hash
+     */
+    adminResetPassword: async (publicUserId, newPassword) => {
+        // 1. Tìm user trong Auth DB bằng publicUserId
+        const user = await prisma.user.findUnique({
+            where: { publicUserId: publicUserId } 
+        });
+
+        if (!user) {
+            throw new Error("USER_NOT_FOUND");
+        }
+        
+        // 2. Hash mật khẩu mới
+        const newPasswordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+        // 3. Cập nhật mật khẩu VÀ xóa mọi Refresh Token
+        // Sử dụng $transaction để đảm bảo cả 2 thao tác thành công hoặc thất bại
+        await prisma.$transaction([
+            // a. Cập nhật pass mới (Dùng user.id nội bộ)
+            prisma.user.update({
+                where: { id: user.id }, 
+                data: { passwordHash: newPasswordHash }
+            }),
+            // b. Xóa tất cả Refresh Token của user (Đăng xuất khỏi mọi thiết bị)
+            prisma.refreshToken.deleteMany({
+                where: { userId: user.id }
+            })
+        ]);
+        
+        console.log(`[AuthService] ✅ Đặt lại mật khẩu thành công cho userId: ${publicUserId}`);
+        // Không cần trả về gì nếu thành công.
+    },
 };

@@ -18,6 +18,7 @@ import UserManage from './pages/UserManage.jsx';
 import AdminBillList from './pages/BillManage.jsx';
 import CreateFixedBooking from './pages/CreateFixedBooking.jsx';
 import CourtStatusPage from './pages/centerStatus.jsx';
+import CenterManagerManagement from './pages/CenterManagerManagement.jsx';
 
 // 💡 IMPORT MỚI: TRANG QUẢN LÝ TRUNG TÂM
 import CenterManagement from './pages/CenterManagement.jsx';
@@ -84,6 +85,7 @@ function App() {
             <Route path="/users-manage" element={<UserManage />} />
             <Route path="/ratings" element={<Rating />} />
             <Route path="/news" element={<News />} /> 
+            <Route path="/center-manager-management" element={<CenterManagerManagement />}/>
           </Route>
 
           {/* 4. Route lỗi 404 trong khu vực Admin */}

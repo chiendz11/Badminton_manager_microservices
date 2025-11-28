@@ -1,0 +1,144 @@
+services:
+  # ----------------------------------------------------
+  # 1. AUTH SERVICE
+  # ----------------------------------------------------
+  auth_service:
+    build:
+      context: ./services/auth_service
+      dockerfile: Dockerfile
+    container_name: auth_service
+    expose:
+      - "8081"
+    environment:
+      - PORT=8081
+    # 💡 SỬA LỖI: Trỏ đúng vào file .env của auth_service
+    env_file:
+      - ./services/auth_service/.env
+    restart: always
+    depends_on:
+      - user_service
+    networks:
+      - microservice_network
+    logging: &default-logging
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------
+  # 2. USER SERVICE
+  # ----------------------------------------------------
+  user_service:
+    build:
+      context: ./services/user_service
+      dockerfile: Dockerfile
+    container_name: user_service
+    expose:
+      - "8085"
+    environment:
+      - PORT=8085
+    # 💡 SỬA LỖI: Trỏ đúng vào file .env của user_service
+    env_file:
+      - ./services/user_service/.env
+    restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # ----------------------------------------------------
+  # 3. CENTER SERVICE
+  # ----------------------------------------------------
+  center_service:
+    build:
+      context: ./services/center_service
+      dockerfile: Dockerfile
+    container_name: center_service
+    expose:
+      - "5003"
+    environment:
+      - PORT=5003
+      # Service này cần gọi Storage qua mạng nội bộ Docker
+      - STORAGE_SERVICE_URL=http://storage_service:5002/api/v1
+    # 💡 SỬA LỖI: Trỏ đúng vào file .env của center_service
+    env_file:
+      - ./services/center_service/.env
+    restart: always
+    depends_on:
+      - storage_service
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # ----------------------------------------------------
+  # 4. STORAGE SERVICE
+  # ----------------------------------------------------
+  storage_service:
+    build:
+      context: ./services/storage_service
+      dockerfile: Dockerfile
+    container_name: storage_service
+    expose:
+      - "5002"
+    environment:
+      - PORT=5002
+    # 💡 SỬA LỖI: Trỏ đúng vào file .env của storage_service
+    env_file:
+      - ./services/storage_service/.env
+    restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # ----------------------------------------------------
+  # 5. API GATEWAY
+  # ----------------------------------------------------
+  api_gateway:
+    build:
+      context: ./api_gateway
+      dockerfile: Dockerfile
+    container_name: api_gateway
+    expose:
+      - "8080"
+    environment:
+      - PORT=8080
+      # Các biến môi trường để kết nối nội bộ
+      - AUTH_SERVICE_URL=http://auth_service:8081
+      - USER_SERVICE_URL=http://user_service:8085
+      - CENTER_SERVICE_URL=http://center_service:5003
+      - STORAGE_SERVICE_URL=http://storage_service:5002
+    # 💡 SỬA LỖI: Trỏ đúng vào file .env của api_gateway
+    env_file:
+      - ./api_gateway/.env
+    restart: always
+    depends_on:
+      - auth_service
+      - user_service
+      - center_service
+      - storage_service
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # ----------------------------------------------------
+  # 6. NGINX
+  # ----------------------------------------------------
+  nginx:
+    build: 
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: bm_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/modsecurity.conf:/etc/nginx/modsecurity.d/modsecurity.conf
+      # - ./nginx/modsec_audit.log:/var/log/modsec_audit.log 
+    restart: always
+    depends_on:
+      - api_gateway
+    networks:
+      - microservice_network
+
+networks:
+  microservice_network:
+    driver: bridge
