@@ -5,7 +5,7 @@ export const getPendingMapping = async (centerId, date) => {
     const response = await axiosInstance.get("/api/booking/pending/mapping", {
       params: { centerId, date }
     });
-    return response.data.mapping;
+    return response.data;
   } catch (error) {
     console.error("Error fetching pending mapping:", error.response?.data || error.message);
     throw error;

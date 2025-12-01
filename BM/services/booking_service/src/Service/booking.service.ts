@@ -9,7 +9,11 @@ import { Center } from "../Schema/center.schema";
 import { CourtBookingDetail } from 'src/Schema/court-booking-detail.schema';
 import { PricingSlot } from 'src/Schema/center-pricing.schema';
 import { User } from 'src/Schema/user.schema';
+import { startOfDay, endOfDay } from 'date-fns'
 
+const START_HOUR = 5; // e.g., 5 AM
+const END_HOUR = 22;  // e.g., 10 PM
+const TOTAL_SLOTS = END_HOUR - START_HOUR;
 type CreateBookingParams = CreateBookingDTO & {userId: string};
 
 @Injectable()
@@ -69,6 +73,80 @@ export class BookingService {
     }
     const finalPrice = basePrice * (1 - discount);
     return Math.round(finalPrice);
+  }
+
+  async findAllBookingsByCenterIdAndDate(centerId: string, bookDate: Date): Promise<Booking[]> {
+    return this.bookingModel.find({ centerId, bookDate }).exec();
+  }
+
+  async getPendingMappingDB(centerId: string, dateStr: string | Date) {
+    // 1. Standardize Date (Start of Day to End of Day)
+    // Using helper library ensures we cover 00:00:00 to 23:59:59 correctly
+    const queryDate = new Date(dateStr);
+    const start = startOfDay(queryDate);
+    const end = endOfDay(queryDate);
+
+    // 2. Query DB
+    const bookings = await this.bookingModel.find({
+      centerId: centerId, // Assuming centerId is stored as String or ObjectId
+      bookDate: {         // Note: Your schema used 'bookDate', snippet used 'date'
+        $gte: start,
+        $lte: end
+      },
+      bookingStatus: { $in: ["pending", "confirmed", "processing"] }, // Updated to match your Enum
+      isDeleted: false
+    })
+    .select('courtBookingDetails bookingStatus userId userName') // Fetch only what we need
+    .lean();
+
+    // 3. Initialize Mapping
+    // Result type: { [courtId: string]: Array<SlotInfo> }
+    const mapping: Record<string, any[]> = {};
+
+    // 4. Helper for Status Text
+    const getStatusText = (status: string) => {
+      switch (status) {
+        case 'confirmed': return 'đã đặt';
+        case 'pending': return 'pending';
+        case 'processing': return 'chờ xử lý';
+        default: return 'không xác định';
+      }
+    };
+
+    // 5. Process Bookings
+    bookings.forEach((booking) => {
+      // Handle User Info (Support both populated object or raw string)
+      const userId = typeof booking.userId === 'object' ? (booking.userId as any)._id : booking.userId;
+      const userName = booking.userName || "Unknown";
+
+      // Loop through court details
+      booking.courtBookingDetails.forEach((detail) => {
+        const courtKey = detail.courtId.toString();
+
+        // Initialize court array if not exists
+        if (!mapping[courtKey]) {
+          mapping[courtKey] = new Array(TOTAL_SLOTS).fill("trống");
+        }
+
+        // Fill slots
+        detail.timeslots.forEach((slotHour) => {
+          // Calculation: If slot is 17 (5PM) and Start Hour is 5, index is 12.
+          // Adjust logic based on how your 'TIMES' array was structured.
+          const idx = slotHour - START_HOUR; 
+
+          if (idx >= 0 && idx < mapping[courtKey].length) {
+            mapping[courtKey][idx] = {
+              status: getStatusText(booking.bookingStatus),
+              userId: userId,
+              name: userName,
+              bookingId: booking._id
+            };
+          }
+        });
+      });
+    });
+
+    return mapping;
   }
   
   async findConflictingBookings(
