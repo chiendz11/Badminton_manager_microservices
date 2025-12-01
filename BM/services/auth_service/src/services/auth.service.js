@@ -52,6 +52,7 @@ export const AuthService = {
                 userId: newUser.publicUserId, 
                 name: data.name,
                 phone_number: data.phone_number,
+                role: newUser.role,
 
                 // 💡 THÊM 2 TRƯỜNG "SAO CHÉP" (COPY)
                 email: newUser.email,

@@ -53,6 +53,15 @@ export const typeDefs = gql`
         deleteCenter(centerId: String!): Boolean!
     }
 
+    # 1. Định nghĩa Type Court
+    type Court {
+        id: ID
+        courtId: String!
+        name: String!
+        type: String
+        isActive: Boolean
+    }
+
     type Center @key(fields: "centerId") {
         id: ID!
         centerId: String!
@@ -74,6 +83,9 @@ export const typeDefs = gql`
         isActive: Boolean
         centerManagerId: String
         pricing: Pricing
+
+        # 2. THÊM DÒNG NÀY: Mối quan hệ 1-n
+        courts: [Court] 
     }
     
     type Pricing { weekday: [TimeSlot], weekend: [TimeSlot] }

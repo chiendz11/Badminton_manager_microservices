@@ -56,12 +56,7 @@ router.get("/users/me",
     userProxy
 );
 
-// 3. GET /api/users/:userId (Admin xem user cụ thể)
-router.patch("/users/:userId",
-    authenticate,
-    authorize([GATEWAY_ROLES.SUPER_ADMIN]),
-    userProxy
-);
+
 
 // 4. PATCH /api/users/me (Cập nhật thông tin cơ bản: Tên, SĐT)
 router.patch("/users/me",
@@ -78,4 +73,10 @@ router.put("/users/me/avatar",
     userProxy
 );
 
+// 3. GET /api/users/:userId (Admin xem user cụ thể)
+router.patch("/users/:userId",
+    authenticate,
+    authorize([GATEWAY_ROLES.SUPER_ADMIN]),
+    userProxy
+);
 export default router;

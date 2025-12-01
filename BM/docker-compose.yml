@@ -11,7 +11,7 @@ services:
       - "8081"
     environment:
       - PORT=8081
-    # 💡 SỬA LỖI: Trỏ đúng vào file .env của auth_service
+    # Trỏ đúng vào file .env trong thư mục con
     env_file:
       - ./services/auth_service/.env
     restart: always
@@ -37,7 +37,6 @@ services:
       - "8085"
     environment:
       - PORT=8085
-    # 💡 SỬA LỖI: Trỏ đúng vào file .env của user_service
     env_file:
       - ./services/user_service/.env
     restart: always
@@ -57,9 +56,8 @@ services:
       - "5003"
     environment:
       - PORT=5003
-      # Service này cần gọi Storage qua mạng nội bộ Docker
+      # Gọi nội bộ sang Storage Service
       - STORAGE_SERVICE_URL=http://storage_service:5002/api/v1
-    # 💡 SỬA LỖI: Trỏ đúng vào file .env của center_service
     env_file:
       - ./services/center_service/.env
     restart: always
@@ -81,7 +79,6 @@ services:
       - "5002"
     environment:
       - PORT=5002
-    # 💡 SỬA LỖI: Trỏ đúng vào file .env của storage_service
     env_file:
       - ./services/storage_service/.env
     restart: always
@@ -90,23 +87,23 @@ services:
     logging: *default-logging
 
   # ----------------------------------------------------
-  # 5. API GATEWAY
+  # 5. API GATEWAY (Cổng nội bộ)
   # ----------------------------------------------------
   api_gateway:
     build:
       context: ./api_gateway
       dockerfile: Dockerfile
     container_name: api_gateway
+    # Chỉ Expose nội bộ cho Nginx gọi, không mở ra ngoài
     expose:
       - "8080"
     environment:
       - PORT=8080
-      # Các biến môi trường để kết nối nội bộ
+      # Kết nối nội bộ đến các service con
       - AUTH_SERVICE_URL=http://auth_service:8081
       - USER_SERVICE_URL=http://user_service:8085
       - CENTER_SERVICE_URL=http://center_service:5003
       - STORAGE_SERVICE_URL=http://storage_service:5002
-    # 💡 SỬA LỖI: Trỏ đúng vào file .env của api_gateway
     env_file:
       - ./api_gateway/.env
     restart: always
@@ -120,19 +117,25 @@ services:
     logging: *default-logging
 
   # ----------------------------------------------------
-  # 6. NGINX
+  # 6. NGINX (Cổng Public duy nhất + WAF)
   # ----------------------------------------------------
   nginx:
     build: 
       context: ./nginx
       dockerfile: Dockerfile
     container_name: bm_nginx
+    # Mở cổng 80 ra ngoài Internet
     ports:
-      - "80:80"
+      - "80:80" 
+    environment:
+      # --- CẤU HÌNH WAF ---
+      - MODSEC_RULE_ENGINE=On
+      - PARANOIA=1
+      # Tắt Proxy tự động để dùng file config riêng trong folder templates
+      - PROXY=0
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
-      - ./nginx/modsecurity.conf:/etc/nginx/modsecurity.d/modsecurity.conf
-      # - ./nginx/modsec_audit.log:/var/log/modsec_audit.log 
+      # Mount file log audit để kiểm tra tấn công
+      - ./nginx/modsec_audit.log:/var/log/modsec_audit.log
     restart: always
     depends_on:
       - api_gateway

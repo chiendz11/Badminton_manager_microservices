@@ -1,18 +1,20 @@
-import React, { useState, useEffect, useContext, useRef } from "react";
+import React, { useState, useEffect, useContext, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import DatePicker from "../components/datepicker";
 import Legend from "../components/legend";
 import BookingTable from "../components/bookingTable";
 import PricingTable from "../components/PricingTable";
 import ModalConfirmation from "../components/ModalConfirmation";
-import socket from "../socket";
 import { AuthContext } from "../contexts/AuthContext";
 
-import { getCourtsByCenter, getPriceForTimeslot, getCenterInfoById } from "../apis/centers";
-import { getPendingMapping, getMyPendingTimeslots, confirmBookingToDB, clearAllPendingBookings, togglePendingTimeslot } from "../apis/booking";
+// Import API
+import { getCenterInfoByIdGQL } from "../apis/centers"; 
+import { getPendingMapping, confirmBookingToDB } from "../apis/booking";
 import { fetchUserInfo } from "../apis/users";
 
 import "../styles/booking.css";
+
+// --- CONSTANTS & HELPERS ---
 
 const times = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
 const slotCount = times.length - 1;
@@ -23,40 +25,79 @@ function formatSlot(slot) {
   return `${hour}h${minute === 0 ? "00" : minute}`;
 }
 
+// Hàm tính tổng tiền và giảm giá (Client Side Display Only)
 function calculateTotal(slots, userPoints) {
   let totalAmount = slots.reduce((sum, s) => sum + s.price, 0);
   const totalHours = slots.length;
 
-  // Áp dụng giảm giá
   let discount = 0;
+  if (totalHours >= 2) discount += 0.05; // Giảm 5% nếu đặt >= 2h
+  if (userPoints > 4000) discount += 0.10; // Giảm 10% nếu VIP
 
-  // Giảm 5% nếu đặt từ 2 giờ trở lên
-  if (totalHours >= 2) {
-    discount += 0.05; // 5%
-  }
-
-  // Giảm thêm 10% nếu user.points > 4000
-  if (userPoints > 4000) {
-    discount += 0.10; // 10%
-  }
-
-  // Tính tổng giá sau giảm giá
   const discountedAmount = totalAmount * (1 - discount);
-  return { totalHours, totalAmount: Math.round(discountedAmount), originalAmount: totalAmount, discount };
+  return { 
+    totalHours, 
+    totalAmount: Math.round(discountedAmount), 
+    originalAmount: totalAmount, 
+    discount 
+  };
 }
 
-function applyLockedLogic(mapping, selectedDate, currentUserId) {
-  const updatedMapping = JSON.parse(JSON.stringify(mapping));
+// --- LOGIC TÍNH GIÁ LOCAL (Client-side) ---
+
+const isWeekend = (dateString) => {
+  const date = new Date(dateString);
+  const day = date.getDay();
+  return day === 0 || day === 6; // 0: CN, 6: T7
+};
+
+const parseHour = (timeStr) => {
+  if (!timeStr) return 0;
+  return parseInt(timeStr.split(":")[0], 10);
+};
+
+const getPriceLocally = (centerInfo, dateStr, slotVal) => {
+  if (!centerInfo || !centerInfo.pricing) return 50000; // Giá mặc định an toàn
+
+  const type = isWeekend(dateStr) ? "weekend" : "weekday";
+  const pricingList = centerInfo.pricing[type] || [];
+
+  // Tìm khung giờ phù hợp: startTime <= slotVal < endTime
+  const matchedPrice = pricingList.find((p) => {
+    const start = parseHour(p.startTime);
+    const end = parseHour(p.endTime);
+    return slotVal >= start && slotVal < end;
+  });
+
+  return matchedPrice ? matchedPrice.price : 50000;
+};
+
+// --- LOGIC HIỂN THỊ (MERGE DATA) ---
+
+function applyDisplayLogic(serverMapping, selectedSlots, selectedDate, currentUserId) {
+  const updatedMapping = JSON.parse(JSON.stringify(serverMapping));
+  
   const todayStr = new Date().toLocaleDateString("en-CA");
   const now = new Date();
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
 
+  selectedSlots.forEach(slot => {
+    const { courtId, slotVal } = slot;
+    if (updatedMapping[courtId]) {
+       const index = times.indexOf(slotVal);
+       if (index !== -1 && index < slotCount) {
+         updatedMapping[courtId][index] = { 
+            status: "myPending", 
+            userId: currentUserId 
+         };
+       }
+    }
+  });
+
   Object.keys(updatedMapping).forEach((courtId) => {
     const arr = updatedMapping[courtId] || Array(slotCount).fill("trống");
     updatedMapping[courtId] = arr.map((status, i) => {
-      if (status === undefined) return "trống";
-
       const slotHour = times[i];
       if (selectedDate === todayStr) {
         if (slotHour < currentHour || (slotHour === currentHour && currentMinute > 0)) {
@@ -64,37 +105,37 @@ function applyLockedLogic(mapping, selectedDate, currentUserId) {
         }
       }
 
+      if (status === undefined) return "trống";
+
       if (typeof status === "object" && status.userId != null) {
         let userId = status.userId;
         if (typeof userId === "string" && userId.includes("_id")) {
           try {
             const parsed = JSON.parse(userId);
             userId = parsed._id || userId;
-          } catch (e) {
-            console.warn(`Không thể parse userId: ${userId}`);
-          }
+          } catch (e) {}
         }
-        console.log("applyLockedLogic - userId:", userId, "currentUserId:", currentUserId);
+        
+        const isMe = userId.toString().trim() === currentUserId?.toString().trim();
 
-        if (status.status === "đã đặt") {
-          return status;
-        } else if (status.status === "chờ xử lý" || status.status.toLowerCase() === "processing") {
-          return userId.toString().trim() === currentUserId?.toString().trim()
-            ? { ...status, status: "myProcessing" }
-            : { ...status, status: "processing" };
+        if (status.status === "paid" || status.status === "đã đặt") {
+          return { ...status, status: "paid" };
+        } else if (status.status === "processing" || status.status === "chờ xử lý") {
+          return isMe ? { ...status, status: "myProcessing" } : { ...status, status: "processing" };
         } else if (status.status === "pending") {
-          return userId.toString().trim() === currentUserId?.toString().trim()
-            ? { ...status, status: "myPending" }
-            : status;
+          return isMe ? { ...status, status: "myPending" } : { ...status, status: "pending" };
         } else if (status.status === "myPending") {
-          return status; // Giữ nguyên trạng thái "myPending" từ inMemoryCache
+          return status; 
         }
       }
       return status;
     });
   });
+
   return updatedMapping;
 }
+
+// --- MAIN COMPONENT ---
 
 const BookingSchedule = () => {
   const navigate = useNavigate();
@@ -104,36 +145,33 @@ const BookingSchedule = () => {
   const name = user?.name || "Người dùng";
 
   const openHours = "05:00 - 24:00";
+  
   const [bookingDataState, setBookingDataState] = useState(() => {
-    const storedData = JSON.parse(localStorage.getItem("bookingData") || "{}");
-    return storedData;
+    return JSON.parse(localStorage.getItem("bookingData") || "{}");
   });
+  
   const [centerId, setCenterId] = useState(bookingDataState.centerId || null);
   const todayStr = new Date().toLocaleDateString("en-CA");
-  console.log("Today (locale):", todayStr);
-  console.log("bookingData from localStorage:", bookingDataState);
-  console.log("centerId:", centerId);
-  const initialDate = todayStr;
-  console.log("Initial date:", initialDate);
+  const [selectedDate, setSelectedDate] = useState(todayStr);
 
-  const [selectedDate, setSelectedDate] = useState(initialDate);
   const [courts, setCourts] = useState([]);
   const [baseMapping, setBaseMapping] = useState({});
-  const [myPendingMapping, setMyPendingMapping] = useState({});
+  const [selectedSlots, setSelectedSlots] = useState([]);
   const [displayMapping, setDisplayMapping] = useState({});
   const [centerInfo, setCenterInfo] = useState(null);
-  const [selectedSlots, setSelectedSlots] = useState([]);
-  const { totalHours, totalAmount, originalAmount, discount } = calculateTotal(selectedSlots, userPoints);
+  
+  // Tính tiền để hiển thị (UX: User thấy ngay giá khi click)
+  const { totalHours, totalAmount, originalAmount } = calculateTotal(selectedSlots, userPoints);
+  
   const [showModal, setShowModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [initialMappingLoaded, setInitialMappingLoaded] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const datePickerRef = useRef(null);
 
-  useEffect(() => {
-    console.log("selectedSlots:", selectedSlots);
-  }, [selectedSlots]);
+  // --- EFFECTS ---
 
   useEffect(() => {
     if (bookingDataState) {
@@ -149,120 +187,93 @@ const BookingSchedule = () => {
   }, [centerId, navigate]);
 
   useEffect(() => {
-    return () => {
-      localStorage.removeItem("bookingData");
-    };
+    return () => localStorage.removeItem("bookingData");
   }, []);
 
+  // 1. Load Initial Data (GraphQL)
   useEffect(() => {
-    const fetchCenterInfo = async () => {
+    const fetchInitialData = async () => {
+      if (!centerId) return;
       try {
-        const response = await getCenterInfoById(centerId);
-        if (response && response.success) {
-          setCenterInfo(response.center);
+        const data = await getCenterInfoByIdGQL(centerId);
+        if (data) {
+           setCenterInfo(data);
+           if (data.courts && Array.isArray(data.courts)) {
+               setCourts(data.courts);
+           }
         }
       } catch (error) {
-        console.error("Error fetching center info:", error);
+        console.error("Error fetching initial data via GraphQL:", error);
       }
     };
-    if (centerId) {
-      fetchCenterInfo();
-    }
+    fetchInitialData();
   }, [centerId]);
 
-  const fetchMappings = async () => {
+  // 2. Status Polling
+  const fetchBookingStatus = useCallback(async () => {
+    if (!centerId || courts.length === 0) return;
+
     try {
-      const data = await getCourtsByCenter(centerId);
-      const courtsData = Array.isArray(data) ? data : data.data;
-      setCourts(courtsData);
-      if (courtsData.length > 0) {
-        const mappingDB = await getPendingMapping(centerId, selectedDate);
-        console.log("Fetched mapping from DB:", mappingDB);
+      const mappingDB = await getPendingMapping(centerId, selectedDate);
+      
+      const completeMapping = {};
+      courts.forEach((court) => {
+        const key = court.id || court._id || court.courtId; 
+        completeMapping[key] = mappingDB[key] || Array(slotCount).fill("trống");
+      });
 
-        const mappingCache = await getMyPendingTimeslots(centerId, selectedDate);
-        console.log("Fetched myPending mapping from cache:", mappingCache);
+      setBaseMapping(completeMapping);
+      setInitialMappingLoaded(true);
+    } catch (error) {
+      console.error("Lỗi cập nhật trạng thái sân:", error);
+    }
+  }, [centerId, selectedDate, courts]);
 
-        const completeMapping = {};
-        courtsData.forEach((court) => {
-          const courtId = court._id;
-          const dbSlots = mappingDB[courtId] || Array(slotCount).fill("trống");
-          const cacheSlots = mappingCache[courtId] || Array(slotCount).fill("trống");
-          const mergedSlots = dbSlots.map((slot, idx) => {
-            if (cacheSlots[idx] !== "trống") {
-              return cacheSlots[idx];
-            }
-            return slot;
-          });
-          completeMapping[courtId] = mergedSlots;
-        });
+  useEffect(() => {
+    if (courts.length > 0) fetchBookingStatus();
 
-        setBaseMapping(completeMapping);
-        const finalMapping = applyLockedLogic(completeMapping, selectedDate, userId);
-        console.log("Final mapping:", finalMapping);
-
-        const newSelectedSlots = [];
-        Object.keys(finalMapping).forEach((courtId) => {
-          finalMapping[courtId].forEach((slot, idx) => {
-            if (slot.status === "myPending") {
-              newSelectedSlots.push({ courtId, slotVal: times[idx], price: 0 });
-            }
-          });
-        });
-        setSelectedSlots(newSelectedSlots);
-
-        setInitialMappingLoaded(true);
-        setDisplayMapping(finalMapping);
-
-        for (const slot of newSelectedSlots) {
-          try {
-            const response = await getPriceForTimeslot({ centerId, date: selectedDate, timeslot: slot.slotVal });
-            if (response.success) {
-              setSelectedSlots((prev) =>
-                prev.map((s) =>
-                  s.courtId === slot.courtId && s.slotVal === slot.slotVal ? { ...s, price: response.price } : s
-                )
-              );
-            } else {
-              setSelectedSlots((prev) =>
-                prev.map((s) =>
-                  s.courtId === slot.courtId && s.slotVal === slot.slotVal ? { ...s, price: 100000 } : s
-                )
-              );
-            }
-          } catch (error) {
-            setSelectedSlots((prev) =>
-              prev.map((s) =>
-                s.courtId === slot.courtId && s.slotVal === slot.slotVal ? { ...s, price: 100000 } : s
-              )
-            );
-          }
-        }
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible' && courts.length > 0) {
+         fetchBookingStatus();
       }
-    } catch (error) {
-      console.error("Lỗi khi lấy danh sách sân hoặc mapping:", error);
-    }
-  };
+    }, 30000); 
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && courts.length > 0) {
+        fetchBookingStatus();
+      }
+    };
+    
+    const handleWindowFocus = () => {
+        if (courts.length > 0) fetchBookingStatus();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [fetchBookingStatus, courts.length]);
+
+  // 3. UI Update
   useEffect(() => {
-    fetchMappings();
-  }, [centerId, selectedDate, userId]);
+    const updateUI = () => {
+        setDisplayMapping(applyDisplayLogic(baseMapping, selectedSlots, selectedDate, userId));
+    };
+    
+    updateUI();
+    const interval = setInterval(updateUI, 60000);
+    return () => clearInterval(interval);
+  }, [baseMapping, selectedSlots, selectedDate, userId]);
 
-  useEffect(() => {
-    if (!userId || !centerId) return;
-    clearAllPendingBookings({ userId, centerId }).catch((err) =>
-      console.error("Lỗi clear pending khi load:", err)
-    );
-  }, [userId, centerId]);
 
-  const handleDateChange = async (newDate) => {
-    if (!userId) return;
-    try {
-      await clearAllPendingBookings({ userId, centerId });
-    } catch (error) {
-      console.error("Lỗi clear pending khi đổi ngày:", error);
-    }
+  // --- HANDLERS ---
+
+  const handleDateChange = (newDate) => {
     setBaseMapping({});
-    setMyPendingMapping({});
     setDisplayMapping({});
     setSelectedSlots([]);
     setInitialMappingLoaded(false);
@@ -270,266 +281,162 @@ const BookingSchedule = () => {
     setBookingDataState({ centerId, date: newDate });
   };
 
-  useEffect(() => {
-    if (!centerId || !selectedDate || !userId || courts.length === 0) return;
-
-    const handleUpdateBookings = async (data) => {
-      console.log("Received WebSocket update in BookingSchedule:", data);
-
-      if (data && data[selectedDate]) {
-        const mappingFromSocket = data[selectedDate];
-        console.log("Mapping from WebSocket:", mappingFromSocket);
-
-        let mappingCache = {};
-        try {
-          mappingCache = await getMyPendingTimeslots(centerId, selectedDate);
-          console.log("Fetched myPending mapping from cache after WebSocket update:", mappingCache);
-        } catch (error) {
-          console.error("Error fetching myPending mapping after WebSocket update:", error);
-        }
-
-        const completeMapping = {};
-        courts.forEach((court) => {
-          const courtId = court._id;
-          const socketSlots = mappingFromSocket[courtId] || Array(slotCount).fill("trống");
-          const cacheSlots = mappingCache[courtId] || Array(slotCount).fill("trống");
-          const mergedSlots = socketSlots.map((slot, idx) => {
-            if (cacheSlots[idx] !== "trống") {
-              return cacheSlots[idx];
-            }
-            return slot;
-          });
-          completeMapping[courtId] = mergedSlots;
-        });
-
-        setBaseMapping(completeMapping);
-        const finalMapping = applyLockedLogic(completeMapping, selectedDate, userId);
-        console.log("Final mapping after WebSocket update:", finalMapping);
-
-        setDisplayMapping(finalMapping);
-
-        const newSelectedSlots = [];
-        Object.keys(finalMapping).forEach((courtId) => {
-          finalMapping[courtId].forEach((slot, idx) => {
-            if (slot.status === "myPending") {
-              newSelectedSlots.push({ courtId, slotVal: times[idx], price: 0 });
-            }
-          });
-        });
-
-        setSelectedSlots((prev) => {
-          const updatedSlots = [...newSelectedSlots];
-          prev.forEach((slot) => {
-            if (updatedSlots.some((s) => s.courtId === slot.courtId && s.slotVal === slot.slotVal)) {
-              updatedSlots.find((s) => s.courtId === slot.courtId && s.slotVal === slot.slotVal).price = slot.price;
-            }
-          });
-          console.log("Updated selectedSlots after WebSocket update:", updatedSlots);
-          return updatedSlots;
-        });
-      } else {
-        console.log(`No mapping found for date ${selectedDate} in WebSocket data, fetching from API...`);
-        await fetchMappings();
-      }
-    };
-
-    socket.on("updateBookings", handleUpdateBookings);
-
-    socket.emit("adminSelectedDates", { centerId, dates: [selectedDate] });
-
-    return () => {
-      socket.off("updateBookings", handleUpdateBookings);
-    };
-  }, [centerId, selectedDate, userId, courts]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDisplayMapping(applyLockedLogic(baseMapping, selectedDate, userId));
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [baseMapping, selectedDate, userId]);
-
-  const toggleBookingStatus = async (rowIndex, colIndex) => {
+  const toggleBookingStatus = (rowIndex, colIndex) => {
     if (!initialMappingLoaded) return;
     const court = courts[rowIndex];
     if (!court) return;
-    const courtId = court._id;
+    
+    const courtIdKey = court.id || court._id || court.courtId; 
     const slotVal = times[colIndex];
+
     const todayStr = new Date().toLocaleDateString("en-CA");
     if (selectedDate === todayStr) {
       const now = new Date();
       if (slotVal < now.getHours() || (slotVal === now.getHours() && now.getMinutes() > 0)) {
-        return;
+        return; 
       }
     }
 
-    const currentStatus = displayMapping[courtId][colIndex];
-    if (currentStatus !== "trống" && currentStatus.status !== "myPending") {
-      return;
+    const serverSlot = baseMapping[courtIdKey] ? baseMapping[courtIdKey][colIndex] : "trống";
+    if (serverSlot !== "trống" && typeof serverSlot === 'object') {
+        return; 
     }
 
-    try {
-      await togglePendingTimeslot({ name, userId, centerId, date: selectedDate, courtId, timeslot: slotVal, ttl: 60 });
+    const existingIndex = selectedSlots.findIndex(s => s.courtId === courtIdKey && s.slotVal === slotVal);
+    let newSelectedSlots = [...selectedSlots];
 
-      const mappingDB = await getPendingMapping(centerId, selectedDate);
-      const mappingCache = await getMyPendingTimeslots(centerId, selectedDate);
-
-      const completeMapping = {};
-      courts.forEach((court) => {
-        const courtId = court._id;
-        const dbSlots = mappingDB[courtId] || Array(slotCount).fill("trống");
-        const cacheSlots = mappingCache[courtId] || Array(slotCount).fill("trống");
-        const mergedSlots = dbSlots.map((slot, idx) => {
-          if (cacheSlots[idx] !== "trống") {
-            return cacheSlots[idx];
-          }
-          return slot;
-        });
-        completeMapping[courtId] = mergedSlots;
-      });
-
-      setBaseMapping(completeMapping);
-      const finalMapping = applyLockedLogic(completeMapping, selectedDate, userId);
-      setDisplayMapping(finalMapping);
-
-      const newSelectedSlots = [];
-      Object.keys(finalMapping).forEach((courtId) => {
-        finalMapping[courtId].forEach((slot, idx) => {
-          if (slot.status === "myPending") {
-            newSelectedSlots.push({ courtId, slotVal: times[idx], price: 0 });
-          }
-        });
-      });
-
-      setSelectedSlots((prev) => {
-        const updatedSlots = [...newSelectedSlots];
-        prev.forEach((slot) => {
-          if (updatedSlots.some((s) => s.courtId === slot.courtId && s.slotVal === slot.slotVal)) {
-            updatedSlots.find((s) => s.courtId === slot.courtId && s.slotVal === slot.slotVal).price = slot.price;
-          }
-        });
-        return updatedSlots;
-      });
-
-      if (newSelectedSlots.some((s) => s.courtId === courtId && s.slotVal === slotVal)) {
-        try {
-          const response = await getPriceForTimeslot({ centerId, date: selectedDate, timeslot: slotVal });
-          if (response.success) {
-            setSelectedSlots((prev) =>
-              prev.map((s) =>
-                s.courtId === courtId && s.slotVal === slotVal ? { ...s, price: response.price } : s
-              )
-            );
-          } else {
-            setSelectedSlots((prev) =>
-              prev.map((s) =>
-                s.courtId === courtId && s.slotVal === slotVal ? { ...s, price: 100000 } : s
-              )
-            );
-          }
-        } catch (error) {
-          setSelectedSlots((prev) =>
-            prev.map((s) =>
-              s.courtId === courtId && s.slotVal === slotVal ? { ...s, price: 100000 } : s
-            )
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Lỗi khi toggle timeslot:", error);
+    if (existingIndex >= 0) {
+      newSelectedSlots.splice(existingIndex, 1);
+      setSelectedSlots(newSelectedSlots);
+    } else {
+      // ✅ GIỮ PRICE Ở ĐÂY để UX tốt (hiển thị tổng tiền)
+      const price = getPriceLocally(centerInfo, selectedDate, slotVal);
+      
+      const newSlot = { courtId: courtIdKey, slotVal, price };
+      newSelectedSlots.push(newSlot);
+      setSelectedSlots(newSelectedSlots);
     }
   };
 
-  function groupSelectedSlots(selectedSlots, courts) {
-    const groups = [];
-    const slotsByCourt = {};
-    selectedSlots.forEach(({ courtId, slotVal }) => {
-      if (!slotsByCourt[courtId]) slotsByCourt[courtId] = [];
-      slotsByCourt[courtId].push(slotVal);
-    });
-    Object.keys(slotsByCourt).forEach((courtId) => {
-      const sorted = slotsByCourt[courtId].sort((a, b) => a - b);
-      let group = [sorted[0]];
-      for (let i = 1; i < sorted.length; i++) {
-        if (sorted[i] === sorted[i - 1] + 1) {
-          group.push(sorted[i]);
-        } else {
-          groups.push({ courtId, slots: group });
-          group = [sorted[i]];
-        }
-      }
-      if (group.length) groups.push({ courtId, slots: group });
-    });
-    return groups.map(({ courtId, slots }) => {
-      const courtObj = courts.find((c) => c._id === courtId);
-      const courtName = courtObj ? courtObj.name : `Court ${courtId}`;
-      return slots.length === 1
-        ? { courtName, timeStr: formatSlot(slots[0]) }
-        : { courtName, timeStr: `${formatSlot(slots[0])} - ${formatSlot(slots[slots.length - 1] + 1)}` };
-    });
-  }
-
   const handleConfirm = () => {
-    console.log("Opening ModalConfirmation, showModal set to true");
+    if (selectedSlots.length === 0) {
+        alert("Vui lòng chọn ít nhất 1 khung giờ.");
+        return;
+    }
     setShowModal(true);
   };
 
+  // --- CHECK-AND-LOCK LOGIC ---
   const handleModalAction = async (action) => {
-    console.log("Modal action:", action);
     if (action === "confirm") {
+      if (isSubmitting) return; 
+      setIsSubmitting(true);
+
       try {
+        // ✅ BEST PRACTICE: Loại bỏ 'price' trước khi gửi lên API
+        // Backend sẽ dùng courtId & timeslot để tự tính toán lại giá
+        const cleanedSlots = selectedSlots.map(s => ({
+            courtId: s.courtId,
+            timeslot: s.slotVal
+        }));
+
         const { success, booking } = await confirmBookingToDB({
           userId,
           centerId,
           date: selectedDate,
-          totalAmount,
-          name
+          totalAmount, // Có thể gửi để BE log/verify, nhưng BE sẽ tự tính lại giá cuối cùng
+          name,
+          selectedSlots: cleanedSlots // Gửi danh sách đã làm sạch
         });
+
         if (success) {
           localStorage.setItem("bookingExpiresAt", booking.expiresAt);
           localStorage.setItem("bookingId", booking._id);
           localStorage.setItem("userId", userId);
           localStorage.setItem("centerId", centerId);
           localStorage.setItem("selectedDate", selectedDate);
-          localStorage.setItem("totalAmount", totalAmount);
+          
+          // Sử dụng giá CHUẨN từ Backend trả về để thanh toán
+          localStorage.setItem("totalAmount", booking.totalAmount);
 
           const slotGroups = groupSelectedSlots(selectedSlots, courts);
           localStorage.setItem("slotGroups", JSON.stringify(slotGroups));
+          
           const updatedUserData = await fetchUserInfo();
           setUser(updatedUserData.user);
-          alert(`Booking pending đã được lưu vào DB.\nBooking ID: ${booking._id}`);
+          
+          alert(`Giữ chỗ thành công! Mã đơn: ${booking._id}`);
           navigate("/payment");
         }
       } catch (error) {
           console.error("Lỗi khi xác nhận booking:", error);
-          alert("Lỗi khi xác nhận booking: " + error.message);
+          
+          if (error.response && error.response.status === 409) {
+             const { message, conflictedSlots } = error.response.data;
+             alert(message || "Một số khung giờ bạn chọn đã bị người khác đặt!");
+
+             const newBaseMapping = JSON.parse(JSON.stringify(baseMapping));
+             conflictedSlots.forEach(conflict => {
+                 const { courtId, timeslot } = conflict;
+                 const index = times.indexOf(timeslot);
+                 if (newBaseMapping[courtId] && index !== -1) {
+                     newBaseMapping[courtId][index] = {
+                         status: 'pending',
+                         userId: 'others' 
+                     };
+                 }
+             });
+             setBaseMapping(newBaseMapping);
+
+             const newSelectedSlots = selectedSlots.filter(s => 
+                 !conflictedSlots.some(c => c.courtId === s.courtId && c.timeslot === s.slotVal)
+             );
+             setSelectedSlots(newSelectedSlots);
+             
+             setShowModal(false);
+          } else {
+             alert("Lỗi hệ thống: " + (error.message || "Unknown error"));
+          }
+      } finally {
+         setIsSubmitting(false);
+         setShowModal(false);
       }
     } else if (action === "cancel") {
       setShowModal(false);
     }
   };
 
-  const formatMoney = (val) => val.toLocaleString("vi-VN") + " đ";
-  const handleGoBack = () => {
-    navigate("/centers");
-  };
-  const formatDisplayDate = (dateString) => {
-    const date = new Date(dateString);
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    const days = [
-      "Chủ Nhật",
-      "Thứ Hai",
-      "Thứ Ba",
-      "Thứ Tư",
-      "Thứ Năm",
-      "Thứ Sáu",
-      "Thứ Bảy",
-    ];
-    const dayOfWeek = days[date.getDay()];
-    return `${dayOfWeek}, ${day}/${month}/${year}`;
-  };
+  function groupSelectedSlots(selectedSlots, courts) {
+    const groups = [];
+    const slotsByCourt = {};
+    
+    selectedSlots.forEach(({ courtId, slotVal }) => {
+      if (!slotsByCourt[courtId]) slotsByCourt[courtId] = [];
+      slotsByCourt[courtId].push(slotVal);
+    });
+
+    Object.keys(slotsByCourt).forEach((cId) => {
+      const sorted = slotsByCourt[cId].sort((a, b) => a - b);
+      let group = [sorted[0]];
+      for (let i = 1; i < sorted.length; i++) {
+        if (sorted[i] === sorted[i - 1] + 1) {
+          group.push(sorted[i]);
+        } else {
+          groups.push({ courtId: cId, slots: group });
+          group = [sorted[i]];
+        }
+      }
+      if (group.length) groups.push({ courtId: cId, slots: group });
+    });
+
+    return groups.map(({ courtId, slots }) => {
+      const courtObj = courts.find((c) => (c.id === courtId || c._id === courtId || c.courtId === courtId));
+      const courtName = courtObj ? courtObj.name : `Court ${courtId}`;
+      return slots.length === 1
+        ? { courtName, timeStr: formatSlot(slots[0]) }
+        : { courtName, timeStr: `${formatSlot(slots[0])} - ${formatSlot(slots[slots.length - 1] + 1)}` };
+    });
+  }
 
   if (!user) {
     return (
@@ -580,8 +487,15 @@ const BookingSchedule = () => {
 
         <div className="control-panel">
           <Legend />
+          <button 
+             onClick={fetchBookingStatus} 
+             className="text-sm text-blue-600 hover:text-blue-800 underline ml-2"
+             title="Làm mới trạng thái sân"
+          >
+             <i className="fas fa-sync-alt"></i>
+          </button>
+
           <div className="date-price-controls">
-            {/* Added data-testid to the wrapper */}
             <div
               className="date-picker-wrapper"
               onClick={() => datePickerRef.current?.openDatePicker()}
@@ -700,14 +614,21 @@ const BookingSchedule = () => {
           </div>
 
           <button onClick={handleConfirm} className="continue-button" data-testid="continue-to-payment-button">
-            <span>Tiếp tục</span>
-            <i className="fas fa-arrow-right"></i>
+            {isSubmitting ? (
+                 <span className="animate-spin mr-2"><i className="fas fa-spinner"></i></span>
+            ) : (
+                <>
+                  <span>Tiếp tục</span>
+                  <i className="fas fa-arrow-right"></i>
+                </>
+            )}
           </button>
         </div>
       )}
 
       {showModal && (
         <ModalConfirmation
+          isLoading={isSubmitting} 
           onAction={handleModalAction}
           title="Xác nhận thanh toán"
           message={

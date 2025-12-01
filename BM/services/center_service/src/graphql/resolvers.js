@@ -1,5 +1,6 @@
 import CenterService from '../services/center.service.js';
 import { getBulkUrls } from '../clients/storage.client.js';
+import { Court } from '../models/court.model.js';
 
 const DEFAULT_LOGO_URL = 'https://res.cloudinary.com/default/default-logo.png';
 // Giả sử bạn có ID mặc định trong env hoặc hardcode một string để bypass validation
@@ -70,6 +71,19 @@ export const resolvers = {
                 const urlMap = await getBulkUrls(parent.image_file_ids);
                 return parent.image_file_ids.map(id => urlMap[id]).filter(url => url);
             } catch (e) { return []; }
+        },
+
+        courts: async (parent) => {
+            try {
+                // parent chính là object Center đang được query
+                // Ta tìm tất cả Court có centerId trùng với parent.centerId
+                // Lưu ý: parent.centerId là string UUID (VD: CENTER-a63e...)
+                const courts = await Court.find({ centerId: parent.centerId });
+                return courts;
+            } catch (error) {
+                console.error("Error resolving courts:", error);
+                return [];
+            }
         }
     }
 };

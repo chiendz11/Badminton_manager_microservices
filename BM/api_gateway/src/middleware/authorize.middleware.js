@@ -1,13 +1,10 @@
-// api_gateway/src/middleware/authorize.js
-
-/**
- * Middleware phân quyền dựa trên vai trò (RBAC)
- * @param {Array<string>} allowedRoles - Mảng các vai trò được phép (ví dụ: ['admin', 'manager'])
- */
 export const authorize = (allowedRoles) => {
     return (req, res, next) => {
         // 💡 Kiểm tra xem authenticateJWT đã chạy chưa và có gán req.user không
         const userRole = req.user?.role; 
+
+        // 👇 DEBUG LOG QUAN TRỌNG: Xem role hiện tại và role yêu cầu
+        console.log(`[Authorize] Check User Role: '${userRole}' vs Allowed: ${JSON.stringify(allowedRoles)}`);
 
         if (!userRole) {
             // Trường hợp này không nên xảy ra nếu authenticateJWT chạy trước đó
