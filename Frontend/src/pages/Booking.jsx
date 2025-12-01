@@ -341,10 +341,8 @@ const BookingSchedule = () => {
         }));
 
         const { success, booking } = await confirmBookingToDB({
-          userId,
           centerId,
           date: selectedDate,
-          totalAmount, // Có thể gửi để BE log/verify, nhưng BE sẽ tự tính lại giá cuối cùng
           name,
           selectedSlots: cleanedSlots // Gửi danh sách đã làm sạch
         });
