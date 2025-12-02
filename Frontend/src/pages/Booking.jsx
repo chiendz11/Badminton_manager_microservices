@@ -9,8 +9,8 @@ import { AuthContext } from "../contexts/AuthContext";
 
 // Import API
 import { getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api";
-import { getPendingMapping, confirmBookingToDB } from "../apis/booking";
-import { fetchUserInfo } from "../apis/users";
+import { getPendingMapping, confirmBookingToDB } from "../apiV2/booking_service/rest/booking";
+import { fetchUserInfo } from "../apiV2/user_service/rest/users.api";
 
 import "../styles/booking.css";
 
@@ -74,7 +74,9 @@ const getPriceLocally = (centerInfo, dateStr, slotVal) => {
 
 // --- LOGIC HIỂN THỊ (MERGE DATA) ---
 
-function applyDisplayLogic(serverMapping, selectedSlots, selectedDate, currentUserId) {
+// 1. Thêm tham số `courts` vào hàm này
+function applyDisplayLogic(serverMapping, selectedSlots, selectedDate, currentUserId, courts) {
+  // Clone server mapping
   const updatedMapping = JSON.parse(JSON.stringify(serverMapping));
   
   const todayStr = new Date().toLocaleDateString("en-CA");
@@ -82,8 +84,21 @@ function applyDisplayLogic(serverMapping, selectedSlots, selectedDate, currentUs
   const currentHour = now.getHours();
   const currentMinute = now.getMinutes();
 
+  // 2. KHỞI TẠO MẶC ĐỊNH CHO TẤT CẢ CÁC SÂN
+  // Đảm bảo sân nào cũng có mảng dữ liệu, ngay cả khi server chưa trả về booking nào
+  if (courts && Array.isArray(courts)) {
+      courts.forEach(court => {
+          const cId = court.id || court._id || court.courtId;
+          if (!updatedMapping[cId]) {
+              updatedMapping[cId] = Array(slotCount).fill("trống");
+          }
+      });
+  }
+
+  // 3. ÁP DỤNG CÁC SLOT ĐANG ĐƯỢC CHỌN (MÀU XANH)
   selectedSlots.forEach(slot => {
     const { courtId, slotVal } = slot;
+    // Lúc này updatedMapping[courtId] chắc chắn đã tồn tại nhờ bước 2
     if (updatedMapping[courtId]) {
        const index = times.indexOf(slotVal);
        if (index !== -1 && index < slotCount) {
@@ -95,10 +110,13 @@ function applyDisplayLogic(serverMapping, selectedSlots, selectedDate, currentUs
     }
   });
 
+  // 4. LOGIC KHÓA (LOCKED) VÀ MAPPING TRẠNG THÁI
   Object.keys(updatedMapping).forEach((courtId) => {
     const arr = updatedMapping[courtId] || Array(slotCount).fill("trống");
     updatedMapping[courtId] = arr.map((status, i) => {
       const slotHour = times[i];
+
+      // Logic Locked: Chỉ áp dụng nếu ngày chọn là hôm nay
       if (selectedDate === todayStr) {
         if (slotHour < currentHour || (slotHour === currentHour && currentMinute > 0)) {
           return "locked";
@@ -107,6 +125,7 @@ function applyDisplayLogic(serverMapping, selectedSlots, selectedDate, currentUs
 
       if (status === undefined) return "trống";
 
+      // Logic parse userId giữ nguyên như cũ
       if (typeof status === "object" && status.userId != null) {
         let userId = status.userId;
         if (typeof userId === "string" && userId.includes("_id")) {
@@ -261,13 +280,14 @@ const BookingSchedule = () => {
   // 3. UI Update
   useEffect(() => {
     const updateUI = () => {
-        setDisplayMapping(applyDisplayLogic(baseMapping, selectedSlots, selectedDate, userId));
+        // TRUYỀN THÊM `courts` VÀO ĐÂY
+        setDisplayMapping(applyDisplayLogic(baseMapping, selectedSlots, selectedDate, userId, courts));
     };
     
     updateUI();
-    const interval = setInterval(updateUI, 60000);
+    const interval = setInterval(updateUI, 60000); // Cập nhật mỗi phút để check giờ locked
     return () => clearInterval(interval);
-  }, [baseMapping, selectedSlots, selectedDate, userId]);
+  }, [baseMapping, selectedSlots, selectedDate, userId, courts]); // Thêm courts vào dependency
 
 
   // --- HANDLERS ---
@@ -326,6 +346,7 @@ const BookingSchedule = () => {
     setShowModal(true);
   };
 
+  const formatMoney = (val) => val.toLocaleString("vi-VN") + " đ";
   const handleGoBack = () => navigate("/centers");
 
   const formatDisplayDate = (dateString) => {
@@ -340,75 +361,103 @@ const BookingSchedule = () => {
   // --- CHECK-AND-LOCK LOGIC ---
   const handleModalAction = async (action) => {
     if (action === "confirm") {
-      if (isSubmitting) return; 
+      if (isSubmitting) return;
       setIsSubmitting(true);
 
       try {
-        // ✅ BEST PRACTICE: Loại bỏ 'price' trước khi gửi lên API
-        // Backend sẽ dùng courtId & timeslot để tự tính toán lại giá
-        const cleanedSlots = selectedSlots.map(s => ({
-            courtId: s.courtId,
-            timeslot: s.slotVal
-        }));
-
-        const { success, booking } = await confirmBookingToDB({
-          centerId,
-          date: selectedDate,
-          name,
-          selectedSlots: cleanedSlots // Gửi danh sách đã làm sạch
+        // ✅ BƯỚC 1: GOM NHÓM DỮ LIỆU (BẮT BUỘC ĐỂ KHỚP DTO)
+        // Chuyển từ mảng phẳng selectedSlots sang mảng đã gom nhóm theo courtId
+        const detailsMap = {};
+        selectedSlots.forEach((slot) => {
+          const cId = slot.courtId;
+          if (!detailsMap[cId]) {
+            detailsMap[cId] = [];
+          }
+          detailsMap[cId].push(slot.slotVal);
         });
 
-        if (success) {
-          localStorage.setItem("bookingExpiresAt", booking.expiresAt);
+        const courtBookingDetails = Object.keys(detailsMap).map((cId) => ({
+          courtId: cId,
+          timeslots: detailsMap[cId], // Backend cần mảng number[] tại đây
+        }));
+
+        console.log("date:", selectedDate);
+        console.log("courtBookingDetails:", courtBookingDetails);
+
+        // ✅ BƯỚC 2: GỌI API
+        const response = await confirmBookingToDB({
+          centerId,
+          bookDate: selectedDate,
+          userName: name || userInfo?.name || "Guest", // Fallback nếu name bị null
+          courtBookingDetails: courtBookingDetails,
+        });
+
+        // Backend của bạn trả về { message, booking, ... } hoặc trực tiếp object
+        // Tùy vào controller trả về gì, nhưng thường là response.booking hoặc response
+        const booking = response.booking || response; 
+
+        console.log("Booking response from server:", booking);
+
+        if (booking && booking._id) {
+          localStorage.setItem("bookingExpiresAt", booking.expiresAt); // Lưu ý: Backend phải trả về field này
           localStorage.setItem("bookingId", booking._id);
           localStorage.setItem("userId", userId);
           localStorage.setItem("centerId", centerId);
           localStorage.setItem("selectedDate", selectedDate);
-          
-          // Sử dụng giá CHUẨN từ Backend trả về để thanh toán
-          localStorage.setItem("totalAmount", booking.totalAmount);
 
-          const slotGroups = groupSelectedSlots(selectedSlots, courts);
+          // Sử dụng giá CHUẨN từ Backend trả về để thanh toán
+          // Nếu backend chưa tính tổng tiền trả về, hãy cẩn thận check null
+          localStorage.setItem("totalAmount", booking.price || booking.totalAmount || 0);
+
+          // Logic group slot để hiển thị (UI only)
+          const slotGroups = groupSelectedSlots(selectedSlots, courts); 
+          // Cần đảm bảo bạn có hàm groupSelectedSlots được define ở ngoài hoặc import vào
           localStorage.setItem("slotGroups", JSON.stringify(slotGroups));
-          
-          const updatedUserData = await fetchUserInfo();
-          setUser(updatedUserData.user);
-          
+
           alert(`Giữ chỗ thành công! Mã đơn: ${booking._id}`);
           navigate("/payment");
         }
       } catch (error) {
-          console.error("Lỗi khi xác nhận booking:", error);
+        console.error("Lỗi khi xác nhận booking:", error);
+
+        if (error.response && error.response.status === 409) {
+          const { message, conflictedSlots } = error.response.data;
+          alert(message || "Một số khung giờ bạn chọn đã bị người khác đặt!");
+
+          // Logic xử lý conflict (tô màu đỏ/xám)
+          const newBaseMapping = JSON.parse(JSON.stringify(baseMapping));
           
-          if (error.response && error.response.status === 409) {
-             const { message, conflictedSlots } = error.response.data;
-             alert(message || "Một số khung giờ bạn chọn đã bị người khác đặt!");
-
-             const newBaseMapping = JSON.parse(JSON.stringify(baseMapping));
-             conflictedSlots.forEach(conflict => {
-                 const { courtId, timeslot } = conflict;
-                 const index = times.indexOf(timeslot);
-                 if (newBaseMapping[courtId] && index !== -1) {
-                     newBaseMapping[courtId][index] = {
-                         status: 'pending',
-                         userId: 'others' 
-                     };
-                 }
-             });
-             setBaseMapping(newBaseMapping);
-
-             const newSelectedSlots = selectedSlots.filter(s => 
-                 !conflictedSlots.some(c => c.courtId === s.courtId && c.timeslot === s.slotVal)
-             );
-             setSelectedSlots(newSelectedSlots);
-             
-             setShowModal(false);
-          } else {
-             alert("Lỗi hệ thống: " + (error.message || "Unknown error"));
+          if (conflictedSlots && Array.isArray(conflictedSlots)) {
+              conflictedSlots.forEach((conflict) => {
+                const { courtId, timeslot } = conflict;
+                // Hàm times được define ở ngoài component
+                const index = times.indexOf(timeslot);
+                if (newBaseMapping[courtId] && index !== -1) {
+                  newBaseMapping[courtId][index] = {
+                    status: "pending",
+                    userId: "others",
+                  };
+                }
+              });
+              setBaseMapping(newBaseMapping);
+    
+              // Bỏ chọn các slot bị trùng
+              const newSelectedSlots = selectedSlots.filter(
+                (s) =>
+                  !conflictedSlots.some(
+                    (c) => c.courtId === s.courtId && c.timeslot === s.slotVal
+                  )
+              );
+              setSelectedSlots(newSelectedSlots);
           }
+          
+          setShowModal(false);
+        } else {
+          alert("Lỗi hệ thống: " + (error.response?.data?.message || error.message || "Unknown error"));
+        }
       } finally {
-         setIsSubmitting(false);
-         setShowModal(false);
+        setIsSubmitting(false);
+        setShowModal(false);
       }
     } else if (action === "cancel") {
       setShowModal(false);
