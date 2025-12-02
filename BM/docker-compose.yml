@@ -104,7 +104,7 @@ services:
       - USER_SERVICE_URL=http://user_service:8085
       - CENTER_SERVICE_URL=http://center_service:5003
       - STORAGE_SERVICE_URL=http://storage_service:5002
-      - BOOKING_SERVICE_URL=http://host.docker.internal:8082
+      - BOOKING_SERVICE_URL=http://booking_service:8082
     env_file:
       - ./api_gateway/.env
     restart: always
@@ -116,6 +116,34 @@ services:
     networks:
       - microservice_network
     logging: *default-logging
+
+  #booking service
+  booking_service:
+    build: ./services/booking_service # Đường dẫn đến folder chứa Dockerfile
+    container_name: booking_service_container
+    ports:
+      - "8082:8082" # Map port ra ngoài để test local nếu cần
+    environment:
+      - PORT=8082
+      - MONGO_URI=mongodb+srv://23021490:bop29042005@badmintonmanager.sxbzi.mongodb.net/BookingService?retryWrites=true&w=majority
+      - PAYOS_CLIENT_ID=c22fec15-aa3c-4ae8-bd66-c7f23e7b3a8f
+      - PAYOS_API_KEY=b7582fae-00bb-4fd6-9627-75e43b4f68a9
+      - PAYOS_CHECKSUM_KEY=2faf30495b796b21441f6f5bb741c2c229aa7c8ba139a5f74cb6c7af86f931cd
+    networks:
+      - microservice_network
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ngrok_container
+    restart: unless-stopped
+    command: "http --domain=eliz-unrelinquishable-unpendulously.ngrok-free.dev booking_service:8082"
+    environment:
+      - NGROK_AUTHTOKEN=36HgOd4rRmoAPoroeJy8xdpZ7Fe_42hp3zLpvJWq5AqrUgaFE
+      - 4040:4040 # Cổng giao diện quản lý Ngrok
+    networks:
+      - microservice_network
+    depends_on:
+      - booking_service
 
   # ----------------------------------------------------
   # 6. NGINX (Cổng Public duy nhất + WAF)

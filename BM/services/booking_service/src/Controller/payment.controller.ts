@@ -5,7 +5,7 @@ import type { Response } from 'express';
 import { BookingService } from 'src/Service/booking.service';
 import { BookingStatus } from 'src/Schema/booking.schema';
 
-@Controller('payment')
+@Controller('api/payment')
 export class PaymentController {
   constructor(
     private readonly paymentService: PaymentService,

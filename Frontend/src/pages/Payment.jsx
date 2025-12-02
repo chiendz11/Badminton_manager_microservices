@@ -6,13 +6,15 @@ import SessionExpired from "../components/SessionExpired";
 import BookingHeader from "../components/BookingHeader";
 import { AuthContext } from "../contexts/AuthContext";
 import '../styles/payments.css';
+import axiosInstance from "../config/axiosConfig";
+
 
 const PaymentPage = () => {
   const navigate = useNavigate();
   const { state } = useLocation();
   const { user } = useContext(AuthContext);
 
-  // --- LẤY DỮ LIỆU ---
+  // --- LẤY DỮ LIỆU --
   const userId = user?._id || "000000000000000000000001";
   const centerId = state?.centerId || localStorage.getItem("centerId");
   const initialDate = state?.date || localStorage.getItem("selectedDate");
@@ -26,81 +28,50 @@ const PaymentPage = () => {
   const [slotGroups, setSlotGroups] = useState([]);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [redirectCountdown, setRedirectCountdown] = useState(null);
+  const [isPayOSReady, setIsPayOSReady] = useState(false);
 
   // --- 1. LOAD SCRIPT PAYOS ---
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://cdn.payos.vn/payos-checkout/v1/stable/payos-initialize.js";
     script.async = true;
+    script.onload = () => setIsPayOSReady(true); // Đánh dấu sẵn sàng
     document.body.appendChild(script);
     return () => {
       if (document.body.contains(script)) document.body.removeChild(script);
     };
-  }, []);
+  }, []); 
 
   // --- 2. XỬ LÝ THANH TOÁN PAYOS ---
   const handlePayOSPayment = async () => {
+    if (!isPayOSReady || !window.PayOSCheckout) {
+      alert("Cổng thanh toán chưa sẵn sàng, vui lòng chờ chút rồi thử lại.");
+      return;
+    }
     try {
-      // Gọi API tạo link của bạn
-      // Lưu ý: Thay URL này bằng domain thật hoặc ngrok của bạn (ví dụ: http://localhost:8082...)
-      const API_URL = "http://localhost:8082/payment/create-link";
-
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingId: bookingIdMongo,
-          amount: totalPrice,
-          returnUrl: window.location.href,
-          cancelUrl: window.location.href
-        })
+      const API_URL = "http://localhost/api/booking/payment/create-link";
+      const response = await axiosInstance.post(API_URL, {
+        amount: totalPrice,
+        description: "hi",
+        returnUrl: window.location.href,
+        cancelUrl: window.location.href,
+        items: [],
       });
 
-      const data = await response.json();
+      const data = response.data;
 
       if (!data.url) {
         alert("Không thể tạo link thanh toán, vui lòng thử lại!");
         return;
       }
 
-      // Mở Popup PayOS
-      if (window.PayOSCheckout) {
-        const payOS = new window.PayOSCheckout.usePayOS({
-          RETURN_URL: window.location.origin,
-          ELEMENT_ID: "payos-config",
-          CHECKOUT_URL: data.url,
-          onSuccess: (event) => {
-            console.log("Thanh toán thành công:", event);
-
-            // Xử lý thành công
-            setIsSuccessModalOpen(true);
-
-            // Xóa session booking
-            localStorage.removeItem("paymentStartTime");
-            localStorage.removeItem("bookingExpiresAt");
-
-            // Đếm ngược 5s rồi redirect
-            let count = 5;
-            setRedirectCountdown(count);
-            const interval = setInterval(() => {
-              count -= 1;
-              setRedirectCountdown(count);
-              if (count <= 0) {
-                clearInterval(interval);
-                navigate("/"); // Về trang chủ
-              }
-            }, 1000);
-          },
-          onCancel: () => console.log("Hủy thanh toán"),
-          onExit: () => console.log("Đóng popup")
-        });
-        payOS.open();
-      }
+      window.location.href = data.url;
     } catch (error) {
       console.error("Lỗi:", error);
       alert("Lỗi kết nối đến cổng thanh toán.");
     }
   };
+
 
   // --- 3. CÁC LOGIC PHỤ TRỢ (ĐẾM NGƯỢC, SLOT, CLEAR DATA) ---
   useEffect(() => {

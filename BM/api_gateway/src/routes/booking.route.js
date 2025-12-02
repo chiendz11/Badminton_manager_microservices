@@ -63,6 +63,15 @@ router.post("/booking/pending/pendingBookingToDB",
     bookingProxy
 );
 
+router.post("/booking/payment/create-link",
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.USER,
+        GATEWAY_ROLES.CENTER_MANAGER
+    ]),
+    bookingProxy
+);
+
 // --- Các route mở rộng khác (Booking History, Cancel...) ---
 // Bạn có thể thêm vào sau tương tự như trên
 
