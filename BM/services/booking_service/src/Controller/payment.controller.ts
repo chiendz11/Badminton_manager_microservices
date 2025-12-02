@@ -44,9 +44,6 @@ export class PaymentController {
         console.error('Không tìm thấy booking với orderCode:', webhookData.orderCode);
         return res.status(HttpStatus.OK).json({ success: true });
       }
-
-      // 4. Quan trọng: Phải trả về status 200 ngay lập tức
-      // Nếu không PayOS tưởng bạn chưa nhận được và sẽ bắn lại nhiều lần
       return res.status(HttpStatus.OK).json({ success: true });
       
     } catch (error) {
