@@ -14,7 +14,8 @@ export const TokenService = {
     generateAccessToken: (user) => {
         return jwt.sign(
             { 
-                userId: user.publicUserId, 
+                userId: user.publicUserId,
+                username: user.username, 
                 role: user.role, 
                 type: 'access',
                 // 💡 Giữ nguyên logic của bạn: thêm hasPassword
