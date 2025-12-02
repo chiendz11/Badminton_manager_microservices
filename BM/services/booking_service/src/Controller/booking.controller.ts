@@ -69,19 +69,19 @@ export class BookingController {
     return this.bookingService.findAllBookings();
   }
 
-  @Get(':id')
+  @Get('booking/:id')
   async findOne(@Param('id') id: string) {
     const booking = await this.bookingService.findBookingById(id);
     if (!booking) throw new NotFoundException('Booking not found');
     return booking;
   }
 
-  @Get(':userId')
+  @Get('booking/:userId')
   async findByUser(@Param('userId') userId: string) {
     return this.bookingService.findAllBookingsByUserId(userId);
   }
 
-  @Patch(':id')
+  @Patch('booking/:id')
   async updateStatus(
     @Param('id') id: string, 
     @Body('status') status: BookingStatus
@@ -100,7 +100,7 @@ export class BookingController {
     }
   }
 
-  @Delete(':id')
+  @Delete('booking/:id')
   async remove(@Param('id') id: string) {
     const deleted = await this.bookingService.deleteBooking(id);
     if (!deleted) throw new NotFoundException('Booking not found');

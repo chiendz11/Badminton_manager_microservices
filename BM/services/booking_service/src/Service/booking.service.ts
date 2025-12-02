@@ -220,6 +220,17 @@ export class BookingService {
     }
     
     booking.bookingStatus = BookingStatus.PROCESSING;
+    return booking.save();
+  }
+
+  async updateBookingStatusToConfirmed(bookingId: string): Promise<Booking | null> {
+    const booking = await this.bookingModel.findById(bookingId);
+
+    if (!booking) {
+      return null;
+    }
+    
+    booking.bookingStatus = BookingStatus.CONFIRMED;
     booking.pointsEarned = Math.floor(booking.price / 1000);
     return booking.save();
   }
