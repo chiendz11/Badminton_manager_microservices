@@ -8,7 +8,7 @@ import ModalConfirmation from "../components/ModalConfirmation";
 import { AuthContext } from "../contexts/AuthContext";
 
 // Import API
-import { getCenterInfoByIdGQL } from "../apis/centers"; 
+import { getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api";
 import { getPendingMapping, confirmBookingToDB } from "../apis/booking";
 import { fetchUserInfo } from "../apis/users";
 
