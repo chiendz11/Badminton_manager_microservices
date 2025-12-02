@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { getAllNews, createNews, updateNews, deleteNews } from '../apis/newsAPI.js';
+import { getAllNews, createNews, updateNews, deleteNews } from '../apiV2/news_service/rest/news.api.js';
 import { Pencil, Trash2, Plus } from 'lucide-react';
+
+const ddMMyyyyToInputDate = (str) => {
+  if (!str) return '';
+  const [dd, mm, yyyy] = str.split('/');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// Chuyển "yyyy-MM-dd" từ input -> "dd/MM/yyyy" để gửi BE
+const inputDateToDdMMyyyy = (str) => {
+  if (!str) return '';
+  const [yyyy, mm, dd] = str.split('-');
+  return `${dd}/${mm}/${yyyy}`;
+};
 
 const AdminNews = () => {
   const [newsList, setNewsList] = useState([]);
@@ -54,10 +67,14 @@ const AdminNews = () => {
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     try {
+      const payload = { 
+      ...currentNews, 
+      date: inputDateToDdMMyyyy(currentNews.date)
+    };
       if (formMode === 'create') {
-        await createNews(currentNews);
+        await createNews(payload);
       } else {
-        await updateNews(selectedNewsId, currentNews);
+        await updateNews(selectedNewsId, payload);
       }
       // Reset form
       setCurrentNews({
@@ -151,7 +168,7 @@ const AdminNews = () => {
                     <td className="py-2 px-4 border-b">{newsItem.title}</td>
                     <td className="py-2 px-4 border-b">{newsItem.source}</td>
                     <td className="py-2 px-4 border-b">
-                      {new Date(newsItem.createdAt).toLocaleDateString()}
+                      {newsItem.date || ''}
                     </td>
                     <td className="py-2 px-4 border-b flex gap-2">
                       <button 
@@ -238,7 +255,7 @@ const AdminNews = () => {
                 <input 
                   type="date" 
                   name="date" 
-                  value={currentNews.date} 
+                  value={ddMMyyyyToInputDate(currentNews.date)} 
                   onChange={handleInputChange} 
                   className="w-full border rounded px-3 py-2 focus:outline-none focus:border-green-500" 
                   required 

@@ -251,7 +251,7 @@ export const AuthService = {
         // 1. Tìm user (Dùng findUnique vì userId là @id và unique)
         // file schema.prisma của bạn xác nhận `id` là @id @db.Uuid
         const user = await prisma.user.findUnique({
-            where: { id: userId }
+            where: { publicUserId: userId }
         });
 
         if (!user) {

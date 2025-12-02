@@ -45,7 +45,6 @@ const userSchema = new mongoose.Schema({
     phone_number: {
         type: String,
         sparse: true, // Cho phép null/undefined là unique (ví dụ: đăng nhập Google)
-        unique: true,
         trim: true
     },
 

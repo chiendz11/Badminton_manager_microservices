@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { getSellHistories, createSellHistory } from "../apis/sellhistoryAPI.js";
-import { getInventoryList } from "../apis/inventoriesAPI.js";
+import { getSellHistories, createSellHistory } from "../apiV2/transaction_service/rest/transaction.api.js";
+import { getInventoryList } from "../apiV2/inventory_service/rest/inventory.api.js";
 
 const centers = [
   { id: "67ca6e3cfc964efa218ab7d8", name: "Nhà thi đấu quận Thanh Xuân" },
@@ -11,6 +11,7 @@ const centers = [
 
 export default function Shop() {
   const [sellHistories, setSellHistories] = useState([]);
+  // Initialize with the ID string directly
   const [selectedCenter, setSelectedCenter] = useState(centers[0].id);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -29,7 +30,8 @@ export default function Shop() {
       setSellHistories(res.data.data || []);
     } catch (err) {
       console.error(err);
-      alert("Lỗi khi lấy danh sách hóa đơn.");
+      // Removed alert to prevent spamming if API fails on load
+      console.error("Lỗi khi lấy danh sách hóa đơn.");
     }
   };
 
@@ -49,21 +51,39 @@ export default function Shop() {
   }, [invoiceItems, inventoryList]);
 
   // Open modal and fetch inventory
-  const handleOpenModal = async () => {
+  // FIX: Explicitly accept the event to prevent it from interfering, 
+  // but use the state 'selectedCenter' for the API call.
+  const handleOpenModal = async (e) => {
+    console.log("handleOpenModal called", selectedCenter);
+    if (e) e.preventDefault(); // Prevent default button behavior
+
+    if (!selectedCenter) {
+      alert("Vui lòng chọn trung tâm trước.");
+      return;
+    }
+
     try {
-      const res = await getInventoryList({ centerId: selectedCenter });
+      console.log("Fetching inventory for center:", selectedCenter); // Debug log
+      console.log("Fetching inventory for center:", selectedCenter); // Debug log
+      const res = await getInventoryList(selectedCenter);
       setInventoryList(res.data.data || []);
       setInvoiceItems({});
       setShowModal(true);
     } catch (err) {
-      console.error(err);
-      alert("Lỗi khi lấy danh sách kho.");
+      console.error("Inventory fetch error:", err);
+      alert("Lỗi khi lấy danh sách kho: " + (err.message || "Unknown error"));
     }
   };
 
   // Handle quantity change
   const handleQuantityChange = (id, value) => {
-    const quantity = Math.max(0, Math.min(Number(value), inventoryList.find(item => item._id === id)?.quantity || 0));
+    const item = inventoryList.find(i => i._id === id);
+    if (!item) return;
+    
+    // Ensure value is handled as a number
+    const numValue = Number(value);
+    const quantity = Math.max(0, Math.min(numValue, item.quantity || 0));
+    
     setInvoiceItems(prev => ({ ...prev, [id]: quantity }));
   };
 
@@ -96,6 +116,10 @@ export default function Shop() {
       alert("Tạo hóa đơn thành công!");
       setShowModal(false);
       fetchHistories();
+      // Reset form
+      setCustomerName("");
+      setCustomerContact("");
+      setInvoiceItems({});
     } catch (err) {
       console.error(err);
       alert("Lỗi khi tạo hóa đơn.");
@@ -187,11 +211,8 @@ export default function Shop() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getCenterName(h.centerId)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(h.createdAt).toLocaleDateString('vi-VN', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
                     })}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">

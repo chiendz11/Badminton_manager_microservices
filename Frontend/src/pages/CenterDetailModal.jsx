@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useContext } from "react";
 import "../styles/centerDetailModal.css";
 import { getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api"; // API V2 GraphQL
-import { submitRating } from "../apis/users"; // Legacy API
+import { submitRating } from "../apiV2/rating_service/rest/rating.api.js";
 import { AuthContext } from "../contexts/AuthContext";
-import { getCommentsForCenter } from "../apis/rating"; // Legacy API
+import { getCommentsForCenter } from "../apiV2/rating_service/rest/rating.api.js";
 
 const CenterDetailModal = ({ center, isOpen, onClose }) => {
   const modalRef = useRef(null);
@@ -127,28 +127,31 @@ const CenterDetailModal = ({ center, isOpen, onClose }) => {
 
   // Confirm Submit
   const confirmSubmitReview = async () => {
-    const ratingData = {
-      centerId: center._id,
-      stars: selectedRating,
-      comment: reviewContent,
-    };
-
-    try {
-      const data = await submitRating(ratingData);
-      if (data && data.rating) {
-        setReviews([data.rating, ...reviews]);
-        alert("Đánh giá của bạn đã được gửi thành công!");
-      }
-      setReviewContent("");
-      setSelectedRating(5);
-    } catch (error) {
-      console.error("Error submitting review:", error);
-      setErrorMessage(error || "Có lỗi xảy ra khi gửi đánh giá. Vui lòng thử lại!");
-      setShowErrorModal(true);
-    } finally {
-      setShowConfirmModal(false);
-    }
+  // Payload đầy đủ cho rating service
+  const ratingData = {
+    centerId: center._id,
+    userId: userId,
+    userName: user?.name || user?.username || "Người dùng",
+    stars: selectedRating,
+    comment: reviewContent,
   };
+
+  try {
+    const data = await submitRating(ratingData);
+    if (data && data.rating) {
+      setReviews([data.rating, ...reviews]); // cập nhật review list ngay lập tức
+      alert("Đánh giá của bạn đã được gửi thành công!");
+    }
+    setReviewContent("");
+    setSelectedRating(5);
+  } catch (error) {
+    console.error("Error submitting review:", error);
+    setErrorMessage(error?.message || "Có lỗi xảy ra khi gửi đánh giá. Vui lòng thử lại!");
+    setShowErrorModal(true);
+  } finally {
+    setShowConfirmModal(false);
+  }
+};
 
   const renderRatingStars = (rating) => {
     const stars = [];

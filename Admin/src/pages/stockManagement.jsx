@@ -4,7 +4,7 @@ import {
   importStock,
   getStockHistory,
   getInventoryList,
-} from "../apis/inventoriesAPI.js";
+} from "../apiV2/inventory_service/rest/inventory.api.js";
 
 const centers = [
   { id: "67ca6e3cfc964efa218ab7d8", name: "Nhà thi đấu quận Thanh Xuân" },

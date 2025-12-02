@@ -1,0 +1,100 @@
+[
+  {
+    "centerId": "CENTER-a63e8f1c-19d2-4e78-90b1-3e4c5a6d7b8f",
+    "userId": "USER-788f8acd-5947-46e6-abab-3f4b327cb41d",
+    "userName": "Nguyễn Mạnh Quỳnh",
+    "stars": 5,
+    "comment": "Rất tốt!",
+    "date": "2025-11-28T17:00:00.000Z"
+  },
+  {
+    "centerId": "CENTER-c8f3e2d1-0b9a-41c5-84f9-2d3e4a5b6c7d",
+    "userId": "USER-788f8acd-5947-46e6-abab-3f4b327cb41d",
+    "userName": "Nguyễn Mạnh Quỳnh",
+    "stars": 4,
+    "comment": "Tuyệt vời!",
+    "date": "2025-11-28T17:05:00.000Z"
+  },
+  {
+    "centerId": "CENTER-b9c2d1f0-5a4b-47e3-982d-1c3f4e5a6b7c",
+    "userId": "USER-788f8acd-5947-46e6-abab-3f4b327cb41d",
+    "userName": "Nguyễn Mạnh Quỳnh",
+    "stars": 5,
+    "comment": "Cực kỳ hài lòng",
+    "date": "2025-11-28T17:10:00.000Z"
+  },
+  {
+    "centerId": "CENTER-d7b1a0e9-3c2d-4f1b-85e0-9a0b1c2d3e4f",
+    "userId": "USER-788f8acd-5947-46e6-abab-3f4b327cb41d",
+    "userName": "Nguyễn Mạnh Quỳnh",
+    "stars": 4,
+    "comment": "Bình thường",
+    "date": "2025-11-28T17:15:00.000Z"
+  },
+
+  {
+    "centerId": "CENTER-a63e8f1c-19d2-4e78-90b1-3e4c5a6d7b8f",
+    "userId": "USER-a43423f7-c3cc-404f-9a5b-8c79c7fae60a",
+    "userName": "23021490 Bùi Anh Chiến",
+    "stars": 3,
+    "comment": "Bình thường",
+    "date": "2025-11-28T17:20:00.000Z"
+  },
+  {
+    "centerId": "CENTER-c8f3e2d1-0b9a-41c5-84f9-2d3e4a5b6c7d",
+    "userId": "USER-a43423f7-c3cc-404f-9a5b-8c79c7fae60a",
+    "userName": "23021490 Bùi Anh Chiến",
+    "stars": 4,
+    "comment": "Rất tốt!",
+    "date": "2025-11-28T17:25:00.000Z"
+  },
+  {
+    "centerId": "CENTER-b9c2d1f0-5a4b-47e3-982d-1c3f4e5a6b7c",
+    "userId": "USER-a43423f7-c3cc-404f-9a5b-8c79c7fae60a",
+    "userName": "23021490 Bùi Anh Chiến",
+    "stars": 5,
+    "comment": "Cực kỳ hài lòng",
+    "date": "2025-11-28T17:30:00.000Z"
+  },
+  {
+    "centerId": "CENTER-d7b1a0e9-3c2d-4f1b-85e0-9a0b1c2d3e4f",
+    "userId": "USER-a43423f7-c3cc-404f-9a5b-8c79c7fae60a",
+    "userName": "23021490 Bùi Anh Chiến",
+    "stars": 4,
+    "comment": "Tuyệt vời!",
+    "date": "2025-11-28T17:35:00.000Z"
+  },
+
+  {
+    "centerId": "CENTER-a63e8f1c-19d2-4e78-90b1-3e4c5a6d7b8f",
+    "userId": "USER-6ea0e5cd-2cc4-4de3-92c9-fc4093b32f9c",
+    "userName": "ManhQuynh Nguyen",
+    "stars": 4,
+    "comment": "Rất tốt!",
+    "date": "2025-11-28T17:40:00.000Z"
+  },
+  {
+    "centerId": "CENTER-c8f3e2d1-0b9a-41c5-84f9-2d3e4a5b6c7d",
+    "userId": "USER-6ea0e5cd-2cc4-4de3-92c9-fc4093b32f9c",
+    "userName": "ManhQuynh Nguyen",
+    "stars": 5,
+    "comment": "Cực kỳ hài lòng",
+    "date": "2025-11-28T17:45:00.000Z"
+  },
+  {
+    "centerId": "CENTER-b9c2d1f0-5a4b-47e3-982d-1c3f4e5a6b7c",
+    "userId": "USER-6ea0e5cd-2cc4-4de3-92c9-fc4093b32f9c",
+    "userName": "ManhQuynh Nguyen",
+    "stars": 4,
+    "comment": "Tuyệt vời!",
+    "date": "2025-11-28T17:50:00.000Z"
+  },
+  {
+    "centerId": "CENTER-d7b1a0e9-3c2d-4f1b-85e0-9a0b1c2d3e4f",
+    "userId": "USER-6ea0e5cd-2cc4-4de3-92c9-fc4093b32f9c",
+    "userName": "ManhQuynh Nguyen",
+    "stars": 3,
+    "comment": "Bình thường",
+    "date": "2025-11-28T17:55:00.000Z"
+  }
+]

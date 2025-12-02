@@ -1,0 +1,286 @@
+[{
+  "_id": {
+    "$oid": "68047286bd19b8c2a301c43e"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 3,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 72,
+  "importPrice": 120000,
+  "totalCost": 360000,
+  "createdAt": {
+    "$date": "2025-10-20T04:05:26.697Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6804741f93f102b11e83d518"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cd"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 200,
+  "unitImport": "Ống",
+  "unitImportQuantity": 12,
+  "totalAdded": 2400,
+  "importPrice": 100000,
+  "totalCost": 20000000,
+  "createdAt": {
+    "$date": "2025-10-20T04:12:15.977Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "680538d26bc75fbf5b8b8513"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "chienqt cop",
+  "quantityImport": 100,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 2400,
+  "importPrice": 100000,
+  "totalCost": 10000000,
+  "createdAt": {
+    "$date": "2025-10-20T18:11:30.921Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "680538ed6bc75fbf5b8b8526"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "chienqt cop",
+  "quantityImport": 10,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 240,
+  "importPrice": 200000,
+  "totalCost": 2000000,
+  "createdAt": {
+    "$date": "2025-10-20T18:11:57.434Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6805394b6bc75fbf5b8b8563"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "chienqt cop",
+  "quantityImport": 9,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 216,
+  "importPrice": 100000,
+  "totalCost": 900000,
+  "createdAt": {
+    "$date": "2025-10-20T18:13:31.347Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "68053b2c08b185d6630065af"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 1,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 24,
+  "importPrice": 120000,
+  "totalCost": 120000,
+  "createdAt": {
+    "$date": "2025-10-20T18:21:32.615Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "68053be608b185d6630065b8"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cc"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 1,
+  "unitImport": "Cái",
+  "unitImportQuantity": 1,
+  "totalAdded": 1,
+  "importPrice": 11111,
+  "totalCost": 11111,
+  "createdAt": {
+    "$date": "2025-10-20T18:24:38.952Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "680543e908b185d6630065c2"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 24,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 576,
+  "importPrice": 111111,
+  "totalCost": 2666664,
+  "createdAt": {
+    "$date": "2025-10-20T18:58:49.048Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6805440708b185d6630065cb"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 24,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 576,
+  "importPrice": 12000,
+  "totalCost": 288000,
+  "createdAt": {
+    "$date": "2025-10-20T18:59:19.043Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6805444108b185d6630065d4"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 24,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 576,
+  "importPrice": 0,
+  "totalCost": 0,
+  "createdAt": {
+    "$date": "2025-10-20T19:00:17.579Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6805450b08b185d6630065e7"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 1,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 24,
+  "importPrice": 0,
+  "totalCost": 0,
+  "createdAt": {
+    "$date": "2025-10-20T19:03:39.749Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "680547a308b185d6630065ff"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "sss",
+  "quantityImport": 1,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 24,
+  "importPrice": 0,
+  "totalCost": 0,
+  "createdAt": {
+    "$date": "2025-10-20T19:14:43.296Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6805fd4aab3d6390798c90d5"
+  },
+  "inventoryId": {
+    "$oid": "67ca7129aac73c44663e78cb"
+  },
+  "centerId": {
+    "$oid": "67ca6e3cfc964efa218ab7d8"
+  },
+  "supplier": "chienqt cop",
+  "quantityImport": 1,
+  "unitImport": "Thùng",
+  "unitImportQuantity": 24,
+  "totalAdded": 24,
+  "importPrice": 1000,
+  "totalCost": 1000,
+  "createdAt": {
+    "$date": "2025-10-21T08:09:46.177Z"
+  },
+  "__v": 0
+}]
