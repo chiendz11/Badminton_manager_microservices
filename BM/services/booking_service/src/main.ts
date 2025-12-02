@@ -3,6 +3,11 @@ import { BookingModule } from './booking.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(BookingModule);
-  await app.listen(process.env.PORT ?? 3000);
+  const port = process.env.PORT ?? 3000;
+
+  // Lắng nghe tất cả các interface để Docker / API Gateway có thể kết nối
+  await app.listen(port, '0.0.0.0');
+
+  console.log(`Booking service running on port ${port}`);
 }
 bootstrap();
