@@ -16,8 +16,8 @@ import UserProfile from "./pages/UserProfile";
 import Service from "./pages/Service";
 import ResetPasswordPage from "./pages/ResetPassword";
 // (AuthProvider đã được bọc bên ngoài trong index.js)
-import WeatherDisplay from './components/WeatherDisplay'; 
-import Scroll from './components/Scroll'; 
+import WeatherDisplay from './components/WeatherDisplay';
+import Scroll from './components/Scroll';
 
 // 💡 1. IMPORT "LÍNH GÁC CỔNG" CỦA BẠN
 import ProtectedLayout from './components/ProtectedLayout';
@@ -26,53 +26,53 @@ import ProtectedLayout from './components/ProtectedLayout';
 import CompleteProfilePage from './pages/CompleteProfile'; // (Chúng ta sẽ tạo file này)
 
 function App() {
-  return (
-      <Router>
-        <Scroll />
-        <Routes>
-          
-          {/* ------------------------------------------ */}
-          {/* 1. CÁC ROUTE CÔNG KHAI (AI CŨNG XEM ĐƯỢC) */}
-          {/* ------------------------------------------ */}
-          <Route
-            path="/"
-            element={
-              <>
-                <Header />
-                <Home />
-                <Footer />
-              </>
-            }
-          />
-          <Route path="/service" element={<Service />} />
-          <Route path="/competition" element={<Competition />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/policy" element={<Policy />} />
-          <Route path="/centers" element={<Centers />} />
-          <Route path="/news" element={<News />} />
-          <Route path="/reset-password/:token/:userId" element={<ResetPasswordPage />} />
-          
-          {/* 💡 Route này BẮT BUỘC phải "công khai", 
+  return (
+    <Router>
+      <Scroll />
+      <Routes>
+
+        {/* ------------------------------------------ */}
+        {/* 1. CÁC ROUTE CÔNG KHAI (AI CŨNG XEM ĐƯỢC) */}
+        {/* ------------------------------------------ */}
+        <Route
+          path="/"
+          element={
+            <>
+              <Header />
+              <Home />
+              <Footer />
+            </>
+          }
+        />
+        <Route path="/service" element={<Service />} />
+        <Route path="/competition" element={<Competition />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/policy" element={<Policy />} />
+        <Route path="/centers" element={<Centers />} />
+        <Route path="/news" element={<News />} />
+        <Route path="/reset-password/:token/:userId" element={<ResetPasswordPage />} />
+
+        {/* 💡 Route này BẮT BUỘC phải "công khai", 
             vì đây là nơi user (chưa hoàn thiện SĐT) bị redirect đến.
           */}
-          <Route path="/complete-profile" element={<CompleteProfilePage />} />
+        <Route path="/complete-profile" element={<CompleteProfilePage />} />
 
-          {/* ------------------------------------------ */}
-          {/* 2. CÁC ROUTE CÁ NHÂN (CẦN BẢO VỆ) */}
-          {/* ------------------------------------------ */}
-          <Route element={<ProtectedLayout />}>
-            {/* Tất cả các Route bên trong <ProtectedLayout />
+        {/* ------------------------------------------ */}
+        {/* 2. CÁC ROUTE CÁ NHÂN (CẦN BẢO VỆ) */}
+        {/* ------------------------------------------ */}
+        <Route element={<ProtectedLayout />}>
+          {/* Tất cả các Route bên trong <ProtectedLayout />
                 sẽ tự động được bảo vệ. */}
-            <Route path="/profile" element={<UserProfile />} />
-            <Route path="/booking" element={<BookingSchedule />} />
-            <Route path="/payment" element={<PaymentPage />} />
-            {/* (Thêm bất kỳ route nào khác cần bảo vệ ở đây) */}
-          </Route>
+          <Route path="/profile" element={<UserProfile />} />
+          <Route path="/booking" element={<BookingSchedule />} />
+          <Route path="/payment" element={<PaymentPage />} />
+          {/* (Thêm bất kỳ route nào khác cần bảo vệ ở đây) */}
+        </Route>
 
-        </Routes>
-        <WeatherDisplay />
-      </Router>
-  );
+      </Routes>
+      <WeatherDisplay />
+    </Router>
+  );
 }
 
 export default App;
