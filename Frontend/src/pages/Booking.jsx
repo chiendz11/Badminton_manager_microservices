@@ -326,6 +326,17 @@ const BookingSchedule = () => {
     setShowModal(true);
   };
 
+  const handleGoBack = () => navigate("/centers");
+
+  const formatDisplayDate = (dateString) => {
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    const days = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+    return `${days[date.getDay()]}, ${day}/${month}/${year}`;
+  };
+
   // --- CHECK-AND-LOCK LOGIC ---
   const handleModalAction = async (action) => {
     if (action === "confirm") {

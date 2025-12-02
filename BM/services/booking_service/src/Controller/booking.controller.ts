@@ -13,16 +13,17 @@ import { BookingService } from '../Service/booking.service';
 import { CreateBookingDTO } from '../DTO/create-booking.DTO';
 import { BookingStatus } from '../Schema/booking.schema';
 import { GatewayAuthGuard } from '../gateway-auth.guard';
+import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 
 
-@Controller('bookings')
+@Controller()
 export class BookingController {
   // this is like declaring variable in a class in java
   constructor(
     private readonly bookingService: BookingService
   ) {}
 
-  @Post()
+  @Post("api/pending/pendingBookingToDB")
   @UseGuards(GatewayAuthGuard)
   async create(@Body() createBookingDto: CreateBookingDTO, @Req() req: any) {
     const userId = req.user?.userId; 
@@ -31,6 +32,36 @@ export class BookingController {
       ...createBookingDto,
       userId,
     });
+  }
+
+  @Get('api/pending/mapping') // Final URL: GET /bookings/pending-mapping
+  async getPendingMapping(
+    @Body('centerId') centerId: string,
+    @Body('date') date: string,
+  ) {
+    // 1. Basic Validation (Or use a DTO class for better validation)
+    if (!centerId || !date) {
+      throw new BadRequestException('centerId and date are required');
+    }
+
+    try {
+      // 2. Call the Service (The logic we wrote in the previous step)
+      const mapping = await this.bookingService.getPendingMappingDB(centerId, date);
+
+      // 3. Return the response
+      // NestJS automatically converts this object to JSON with status 200
+      return { 
+        success: true, 
+        mapping: mapping 
+      };
+
+    } catch (error) {
+      // 4. Error Handling
+      // In NestJS, you usually let the Global Exception Filter handle this,
+      // but to match your logic explicitly:
+      console.error("Error fetching pending mapping:", error);
+      throw new InternalServerErrorException(error.message);
+    }
   }
 
   @Get()
