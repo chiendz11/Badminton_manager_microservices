@@ -1,17 +1,65 @@
-FROM node:20-alpine
+# ===============================================
+# STAGE 1: BUILDER
+# Nhiệm vụ: Cài đặt tất cả dependencies và chạy lệnh nest build
+# ===============================================
+FROM node:20-alpine AS builder
 
-WORKDIR /app
-
+# Thiết lập pnpm
 RUN npm install -g pnpm
 
-COPY package*.json ./
+# Thiết lập thư mục làm việc trong container
+WORKDIR /app
 
-RUN pnpm install
+# Copy các file cấu hình cần thiết để cài đặt dependencies
+COPY package.json pnpm-lock.yaml ./
 
+# [FIX QUAN TRỌNG]: Cấu hình pnpm để tạo node_modules phẳng (như npm)
+# Giúp tránh lỗi "Cannot find module commander" VÀ lỗi "lru-cache not a constructor"
+RUN pnpm config set node-linker hoisted
+
+# Cài đặt TẤT CẢ dependencies (production + development)
+# Không cần --shamefully-hoist nữa vì đã set linker=hoisted
+RUN pnpm install --frozen-lockfile
+
+# Copy toàn bộ mã nguồn vào container
 COPY . .
 
+# Chạy quá trình build NestJS
+# Lệnh này sẽ tạo ra thư mục 'dist'
 RUN pnpm run build
 
-EXPOSE 8082
 
-CMD ["npm", "run", "start:dev"]
+# ===============================================
+# STAGE 2: PRODUCTION (FINAL IMAGE)
+# Nhiệm vụ: Tạo image nhỏ gọn chỉ chứa các dependencies cần thiết để chạy ứng dụng
+# ===============================================
+FROM node:20-alpine AS production
+
+# Thiết lập pnpm
+RUN npm install -g pnpm
+
+# Thiết lập biến môi trường để NestJS chạy ở chế độ production
+ENV NODE_ENV=production
+
+# Thiết lập thư mục làm việc
+WORKDIR /app
+
+# Copy package.json VÀ pnpm-lock.yaml để pnpm biết cần cài đặt gì ở giai đoạn này
+COPY package.json pnpm-lock.yaml ./
+
+# Cài đặt CHỈ Production Dependencies
+# pnpm sẽ cài đặt các gói cần thiết (mục "dependencies") và tái sử dụng cache nếu có
+RUN pnpm install --frozen-lockfile --prod
+
+# Copy file .env từ thư mục gốc (nếu bạn dùng docker-compose env_file thì có thể bỏ dòng này, nhưng giữ lại cũng không sao)
+COPY .env ./.env
+
+# Copy file dist đã được build từ Giai đoạn Builder
+# Thư mục 'dist' chứa tất cả mã nguồn JavaScript đã compile
+COPY --from=builder /app/dist ./dist
+
+# Lệnh mặc định để chạy ứng dụng NestJS đã build
+CMD [ "node", "dist/main" ]
+
+# Mở cổng 8082 để khớp với docker-compose của bạn
+EXPOSE 8082

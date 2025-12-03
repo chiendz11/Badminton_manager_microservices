@@ -113,6 +113,7 @@ services:
       - user_service
       - center_service
       - storage_service
+      - booking_service
     networks:
       - microservice_network
     logging: *default-logging
@@ -120,7 +121,7 @@ services:
   #booking service
   booking_service:
     build: ./services/booking_service # Đường dẫn đến folder chứa Dockerfile
-    container_name: booking_service_container
+    container_name: booking_service
     ports:
       - "8082:8082" # Map port ra ngoài để test local nếu cần
     environment:

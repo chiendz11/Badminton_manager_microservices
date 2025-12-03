@@ -1,0 +1,14 @@
+# Bỏ qua node_modules local để tránh xung đột với container
+node_modules/
+
+# Bỏ qua thư mục build local
+dist/
+
+# Bỏ qua các file log và file tạm khác
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+.git
+.gitignore
+Dockerfile
+README.md

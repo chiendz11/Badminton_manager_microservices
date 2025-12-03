@@ -15,15 +15,28 @@ export class PaymentController {
   @Post('create-link')
   async createLink(@Body() body: CreatePaymentDto, @Res() res: Response) {
     try {
-      
+      // Gọi Service (Hàm này đã được sửa ở bước trước để trả về full object)
       const paymentLink = await this.paymentService.createPaymentLink(body);
 
-      return res.status(HttpStatus.OK).json({
-        url: paymentLink.checkoutUrl
-      });
+      // 🔥 SỬA LẠI CHỖ NÀY:
+      // Thay vì chỉ trả về { url: ... }, hãy trả về nguyên object paymentLink
+      return res.status(HttpStatus.OK).json(paymentLink);
+
+      /* * LƯU Ý: Nếu bạn muốn bọc trong cấu trúc chuẩn, có thể viết:
+       * return res.status(HttpStatus.OK).json({
+       * error: 0,
+       * message: "Success",
+       * data: paymentLink 
+       * });
+       * Nhưng nếu làm vậy, ở Frontend nhớ gọi response.data.data.bin nhé!
+       */
+
     } catch (error) {
       console.error(error);
-      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Lỗi tạo link' });
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ 
+        message: 'Lỗi tạo link thanh toán',
+        error: error.message 
+      });
     }
   }
 
