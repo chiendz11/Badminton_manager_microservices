@@ -70,11 +70,11 @@ export class BookingController {
     return this.bookingService.findAllBookings();
   }
 
-  @Get('booking/:id')
+  @Get('api/:id/status')
   async findOne(@Param('id') id: string) {
     const booking = await this.bookingService.findBookingById(id);
     if (!booking) throw new NotFoundException('Booking not found');
-    return booking;
+    return booking.bookingStatus;
   }
 
   @Get('booking/:userId')

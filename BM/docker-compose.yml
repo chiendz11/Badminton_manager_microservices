@@ -136,13 +136,14 @@ services:
   ngrok:
     image: ngrok/ngrok:latest
     container_name: ngrok_container
-    restart: unless-stopped
+    restart: on-failure:5
     command: "http --domain=eliz-unrelinquishable-unpendulously.ngrok-free.dev booking_service:8082"
     environment:
       - NGROK_AUTHTOKEN=36HgOd4rRmoAPoroeJy8xdpZ7Fe_42hp3zLpvJWq5AqrUgaFE
-      - 4040:4040 # Cổng giao diện quản lý Ngrok
     networks:
       - microservice_network
+    ports:
+      - "4040:4040" # Ngrok web interface
     depends_on:
       - booking_service
 

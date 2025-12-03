@@ -1,6 +1,10 @@
   import { IsNotEmpty, IsNumber, IsString, IsOptional, Min, MaxLength, IsUrl } from 'class-validator';
 
   export class CreatePaymentDto {
+    @IsString()
+    @IsNotEmpty()
+    bookingId: string;
+
     @IsNotEmpty()
     @IsNumber()
     @Min(1000, { message: 'Số tiền phải lớn hơn 1.000 VNĐ' })

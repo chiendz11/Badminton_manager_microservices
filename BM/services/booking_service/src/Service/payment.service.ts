@@ -30,39 +30,27 @@ export class PaymentService {
   }
 
   async createPaymentLink(paymentData: CreatePaymentDto) {
-    const items = Array.isArray(paymentData.items) 
-      ? paymentData.items.map(item => ({ 
-          name: item.name, 
-          quantity: item.quantity, 
-          price: item.price 
-        }))
-      : [];
 
-    // --- LOGIC THỜI GIAN ---
-    // Lấy thời gian hiện tại (tính bằng giây)
     const createdAt = Math.floor(Date.now() / 1000);
-    // Link hết hạn sau 5 phút (300 giây) tính từ lúc tạo
     const expiredAt = createdAt + 300; 
 
     const payload = {
       orderCode: this.generateOrderCode(),
       amount: paymentData.amount,
-      description: paymentData.description || 'Thanh toan',
+      description: paymentData.bookingId,
       returnUrl: paymentData.returnUrl,
       cancelUrl: paymentData.cancelUrl,
-      items: items,
-      expiredAt: expiredAt, // Gửi cho PayOS biết link này chỉ sống 5 phút
+      items: [],
+      expiredAt: expiredAt,
     };
 
-    try {
+    try { 
       const paymentLinkRes = await this.payOS.paymentRequests.create(payload);
       
       this.logger.log(`Created PayOS Link: ${payload.orderCode}`);
-
-      // TRẢ VỀ DỮ LIỆU KÈM createdAt ĐỂ FE TÍNH TOÁN
       return {
         ...paymentLinkRes,
-        createdAt: createdAt // Trả về timestamp lúc tạo
+        createdAt: createdAt
       }; 
 
     } catch (error) {

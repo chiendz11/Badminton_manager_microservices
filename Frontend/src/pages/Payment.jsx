@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { createPayOSPayment, checkPaymentStatus } from "../apiV2/booking_service/rest/booking";
+import { createPayOSPayment, checkPaymentStatus, getBookingStatusFromBookingId } from "../apiV2/booking_service/rest/booking";
 import { Copy, Clock, AlertTriangle, User, Phone, Hash, Loader, QrCode } from "lucide-react";
 import SessionExpired from "../components/SessionExpired";
 import BookingHeader from "../components/BookingHeader";
@@ -114,8 +114,8 @@ const PaymentPage = () => {
 
     const pollStatus = async () => {
       try {
-        const res = await checkPaymentStatus(paymentData.orderCode);
-        if (res.status === "PAID" || res.status === "CONFIRMED" || res.status === "SUCCESS") {
+        const res = await getBookingStatusFromBookingId(bookingId);
+        if (res === "confirmed") {
            clearInterval(pollingIntervalRef.current);
            handlePaymentSuccess();
         }

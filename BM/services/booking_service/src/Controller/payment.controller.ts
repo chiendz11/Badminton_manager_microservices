@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Res, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Res, HttpStatus, Logger } from '@nestjs/common';
 import { PaymentService } from 'src/Service/payment.service';
 import { CreatePaymentDto } from 'src/DTO/create-payment.DTO';
 import type { Response } from 'express';
@@ -7,29 +7,18 @@ import { BookingStatus } from 'src/Schema/booking.schema';
 
 @Controller('api/payment')
 export class PaymentController {
+  private readonly Logger = new Logger(PaymentController.name);
   constructor(
     private readonly paymentService: PaymentService,
-    private readonly bookingService: BookingService
+    private readonly bookingService: BookingService,
 ) {}
 
   @Post('create-link')
   async createLink(@Body() body: CreatePaymentDto, @Res() res: Response) {
     try {
-      // Gọi Service (Hàm này đã được sửa ở bước trước để trả về full object)
+      this.Logger.log('Creating PayOS payment link with data:', body);
       const paymentLink = await this.paymentService.createPaymentLink(body);
-
-      // 🔥 SỬA LẠI CHỖ NÀY:
-      // Thay vì chỉ trả về { url: ... }, hãy trả về nguyên object paymentLink
       return res.status(HttpStatus.OK).json(paymentLink);
-
-      /* * LƯU Ý: Nếu bạn muốn bọc trong cấu trúc chuẩn, có thể viết:
-       * return res.status(HttpStatus.OK).json({
-       * error: 0,
-       * message: "Success",
-       * data: paymentLink 
-       * });
-       * Nhưng nếu làm vậy, ở Frontend nhớ gọi response.data.data.bin nhé!
-       */
 
     } catch (error) {
       console.error(error);
@@ -43,6 +32,7 @@ export class PaymentController {
   @Post('webhook')
   async handleWebhook(@Body() body: any, @Res() res: Response) {
     try {
+      this.Logger.log('Received PayOS webhook with data:', body);
       const webhookData = await this.paymentService.verifyWebhook(body); 
       const match = webhookData.description.match(/[a-f0-9]{24}/);
       if (!match) {

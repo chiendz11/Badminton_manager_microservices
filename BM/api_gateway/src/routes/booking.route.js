@@ -63,6 +63,16 @@ router.post("/booking/pending/pendingBookingToDB",
     bookingProxy
 );
 
+router.get("/booking/:id/status",
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.USER,
+        GATEWAY_ROLES.CENTER_MANAGER,
+        GATEWAY_ROLES.SUPER_ADMIN
+    ]),
+    bookingProxy
+);
+
 router.post("/booking/payment/create-link",
     authenticate,
     authorize([

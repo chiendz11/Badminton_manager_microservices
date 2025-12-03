@@ -14,6 +14,16 @@ export const getPendingMapping = async (centerId, date) => {
   }
 };
 
+export const getBookingStatusFromBookingId = async (bookingId) => {
+  try {
+    const response = await axiosInstance.get(`/api/booking/${bookingId}/status`);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching booking status:", error.response?.data || error.message);
+    throw error;
+  }
+}
+
 export const confirmBookingToDB = async ({ centerId, bookDate, userName, courtBookingDetails}) => {
   try {
     const response = await axiosInstance.post("/api/booking/pending/pendingBookingToDB", {
