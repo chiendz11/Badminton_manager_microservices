@@ -11,13 +11,13 @@ export const TransactionController = {
   },
 
   getStockHistory: async (req, res) => {
-    try {
-      const result = await TransactionService.getStockHistory(req.query);
-      res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  },
+  try {
+    const result = await TransactionService.getStockHistory(req.query);
+    res.json({ data: result }); // luôn trả về mảng
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+},
 
   addSellHistory: async (req, res) => {
     try {

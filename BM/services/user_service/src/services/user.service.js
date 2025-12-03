@@ -93,6 +93,40 @@ export const UserService = {
         }
     },
 
+    async updateUserById(userId, data) {
+        try {
+            const cleanUserId = userId.trim();
+
+            // 1. Lọc dữ liệu (Security Best Practice)
+            // Chỉ cho phép Admin cập nhật các trường thông tin cá nhân tại đây.
+            // Các trường Identity (email, username, role) phải được xử lý qua quy trình đồng bộ từ Auth Service.
+            const allowedUpdates = {};
+            
+            if (data.name) allowedUpdates.name = data.name.trim();
+            if (data.phone_number) allowedUpdates.phone_number = data.phone_number.trim();
+            
+            // (Mở rộng: Nếu sau này muốn cho Admin sửa avatar qua link/id trực tiếp)
+            if (data.avatar_file_id) allowedUpdates.avatar_file_id = data.avatar_file_id;
+            if (data.avatar_url) allowedUpdates.avatar_url = data.avatar_url;
+
+            // ⚠️ CẢNH BÁO: Không cập nhật email/username ở đây để tránh lệch data với Auth Service.
+            // Nếu payload có gửi email/username, ta lờ đi.
+
+            // 2. Thực hiện Update
+            const updatedUser = await User.findOneAndUpdate(
+                { userId: cleanUserId }, // Tìm theo UUID
+                { $set: allowedUpdates },
+                { new: true, runValidators: true } // Trả về document mới nhất và chạy validate schema
+            ).select('-__v'); // Ẩn version key
+
+            return updatedUser;
+
+        } catch (error) {
+            console.error(`[UserService] updateUserById Error:`, error.message);
+            throw error;
+        }
+    },
+
     // 💡 HÀM MỚI: Cập nhật Avatar (Bao gồm Upload và Xóa file cũ)
     async updateAvatarData(userId, fileBuffer, originalname) {
         const cleanUserId = userId.trim();
@@ -165,6 +199,65 @@ export const UserService = {
             if (newFileMetadata && newFileMetadata.publicFileId) {
                 await StorageClient.deleteFile(newFileMetadata.publicFileId);
             }
+            throw error;
+        }
+    },
+
+    async findAllUsers({ page = 1, limit = 10, search = '', level = '', sort = 'createdAt', order = 'desc', role = '', isActive }) {
+        try {
+            const skip = (page - 1) * limit;
+            const query = {};
+
+            // Lọc theo Role (Bắt buộc cho trang UserManage)
+            if (role) {
+                query.role = role.toUpperCase();
+            }
+
+            // Lọc theo Trạng thái (Active / Banned)
+            // Lưu ý: query param gửi lên thường là string 'true'/'false'
+            if (isActive !== undefined && isActive !== '') {
+                query.isActive = (isActive === 'true');
+            }
+
+            // Tìm kiếm (Tên, Email, SĐT)
+            if (search) {
+                const searchRegex = new RegExp(search, 'i');
+                query.$or = [
+                    { name: searchRegex },
+                    { email: searchRegex },
+                    { phone_number: searchRegex }
+                ];
+            }
+
+            // Lọc theo Rank
+            if (level && level !== 'Tất cả') {
+                query.level = level.toLowerCase();
+            }
+
+            // Thực thi Query
+            const [totalDocs, users] = await Promise.all([
+                User.countDocuments(query),
+                User.find(query)
+                    .select('-__v')
+                    .sort({ [sort]: order === 'asc' ? 1 : -1 })
+                    .skip(skip)
+                    .limit(parseInt(limit))
+                    .lean()
+            ]);
+
+            return {
+                data: users,
+                pagination: {
+                    totalDocs,
+                    limit: parseInt(limit),
+                    totalPages: Math.ceil(totalDocs / limit),
+                    page: parseInt(page),
+                    hasPrevPage: page > 1,
+                    hasNextPage: page < Math.ceil(totalDocs / limit)
+                }
+            };
+        } catch (error) {
+            console.error(`[UserService] findAllUsers Error:`, error.message);
             throw error;
         }
     }

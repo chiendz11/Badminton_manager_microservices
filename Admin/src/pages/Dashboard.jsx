@@ -53,6 +53,21 @@ const getFeatureIcon = (title) => {
     }
 };
 
+const DEFAULT_AVATAR_URL = "https://res.cloudinary.com/dm4uxmmtg/image/upload/v1762859721/badminton_app/avatars/default_user_avatar.png";
+
+  // --- Logic xử lý Avatar ---
+
+  // Backend (UserService) luôn trả về URL đầy đủ (Cloudinary URL).
+  // 💡 SỬA LOGIC HIỂN THỊ:
+  const getAvatarImagePath = (path) => {
+    // Nếu path có giá trị (khác null/undefined/empty) -> Dùng path
+    if (path && path.trim() !== "") {
+        return path; 
+    }
+    // Nếu path là null -> Trả về ảnh mặc định
+    return DEFAULT_AVATAR_URL;
+  };
+
 const PRIMARY_COLOR = '#10B981'; 
 const BACKGROUND_COLOR = '#F0FFF4'; 
 const CARD_BG_COLOR = '#FFFFFF'; 
@@ -116,6 +131,7 @@ const DashboardAdmin = () => {
             { title: 'Quản lý khách hàng', path: '/users-manage', roles: ['super_admin'] },
             { title: 'Quản lý tin tức', path: '/news', roles: ['super_admin'] },
             { title: 'Quản lý đánh giá', path: '/ratings', roles: ['super_admin'] },
+            {title: 'Quản lý Center Manager', path: '/center-manager-management', roles: ['super_admin'] }
         ];
 
         return allFeatures.filter(feature => feature.roles.includes(admin.role));
@@ -147,7 +163,7 @@ const DashboardAdmin = () => {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                     <img 
-                        src={admin?.avatar_url}
+                        src={getAvatarImagePath(admin?.avatar_url)}
                         alt="avatar" 
                         style={{ 
                             width: 70, 

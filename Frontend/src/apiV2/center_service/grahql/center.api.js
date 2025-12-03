@@ -31,6 +31,13 @@ const CENTER_DETAIL_FRAGMENT = `
     googleMapUrl
     facilities
     bookingCount
+
+    courts {
+       courtId
+       name
+       type
+       isActive
+    }
     
     pricing {
       weekday {

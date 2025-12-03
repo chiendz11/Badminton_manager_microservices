@@ -1,56 +1,56 @@
-# ------------------
-# Giai đoạn 1: Build (Cài đặt dependencies)
-# ------------------
-# Dùng image Node.js 18 (Alpine là bản siêu nhẹ)
-FROM node:18-alpine AS builder
-
-# Đặt thư mục làm việc bên trong container
+# ----------------------------------------------------
+# GIAI ĐOẠN 1: DEPS (Cài dependencies đầy đủ để build)
+# ----------------------------------------------------
+FROM node:22-alpine AS deps
 WORKDIR /app
-
-# Copy file package.json và package-lock.json
 COPY package*.json ./
+# Cài đặt TOÀN BỘ gói (cả devDependencies) để có thể chạy lệnh prisma generate
+RUN npm ci
 
-# Cài đặt tất cả dependencies (bao gồm devDependencies để build)
-RUN npm install
-
-# Copy toàn bộ code (thư mục src, prisma, .env...) vào
+# ----------------------------------------------------
+# GIAI ĐOẠN 2: BUILDER (Generate Prisma Client)
+# ----------------------------------------------------
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# 💡 Chạy Prisma Generate (Rất quan trọng cho K8s)
-# Bước này để tạo Prisma Client cho môi trường Linux
+# 💡 Tạo Prisma Client (File sẽ được tạo trong node_modules/.prisma)
 RUN npx prisma generate
 
-# ------------------
-# Giai đoạn 2: Production (Chạy app)
-# ------------------
-# Dùng lại image Node.js 18 (hoặc một image slim hơn)
-FROM node:18-alpine
-
+# ----------------------------------------------------
+# GIAI ĐOẠN 3: RUNNER (Production)
+# ----------------------------------------------------
+FROM node:22-alpine AS runner
 WORKDIR /app
 
-# Copy lại file package để cài đặt production
+# Cài đặt openssl và dumb-init
+RUN apk add --no-cache openssl dumb-init
+
+ENV NODE_ENV=production
+
+# 1. Copy package.json
 COPY package*.json ./
 
-# 💡 Chỉ cài đặt dependencies cho production (nhẹ hơn)
-RUN npm install --production
+# 2. Cài đặt dependencies production (để có các gói khác ngoài prisma)
+RUN npm ci --omit=dev
 
-# Copy code đã build và node_modules từ giai đoạn "builder"
-# Copy thư mục "dist" nếu bạn có bước build (TypeScript)
-# COPY --from=builder /app/dist ./dist
+# 3. COPY QUAN TRỌNG ĐÃ SỬA:
+# Copy thư mục @prisma (chứa định nghĩa)
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# 💡 FIX LỖI: Copy thư mục .prisma (chứa Client thật và Binary engine đã generate)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
-# Copy code "src" nếu bạn chạy JS trực tiếp
-COPY --from=builder /app/src ./src
-
-# Copy Prisma schema và client đã được generate
+# Copy thư mục prisma (chứa schema)
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.env .env   
 
-# Lấy cổng từ biến môi trường (mặc định là 8081)
-ENV PORT=8081
+# Copy source code
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/server.js ./
 
-# Mở cổng 8081 của container
+# Chuyển user
+USER node
+
 EXPOSE 8081
 
-# Lệnh để khởi chạy ứng dụng (thay 'src/index.js' nếu cần)
-CMD [ "node", "src/server.js" ]
+CMD ["dumb-init", "node", "server.js"]

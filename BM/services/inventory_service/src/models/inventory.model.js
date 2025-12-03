@@ -4,7 +4,7 @@ const inventorySchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String },
   category: { type: String, required: true },
-  centerId: { type: mongoose.Schema.Types.ObjectId, ref: "Center", required: true },
+  centerId: { type: mongoose.Schema.Types.ObjectId, required: true },
   supplier: { type: String, required: true },
   unitImport: { type: String, required: true },
   unitImportQuantity: { type: Number, required: true },

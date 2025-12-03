@@ -125,3 +125,7 @@ export const changePasswordSchema = Joi.object({
             'any.required': 'Mật khẩu xác nhận là bắt buộc.'
         }),
 });
+
+export const adminResetPasswordSchema = Joi.object({
+    newPassword: passwordRule
+});

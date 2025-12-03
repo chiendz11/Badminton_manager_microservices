@@ -2,10 +2,7 @@ import axiosInstance from '../../../config/axiosConfig';
 
 const GRAPHQL_ENDPOINT = "/graphql";
 
-
-// -----------------------------------------------------------
-// 💡 CẬP NHẬT: Đổi image_file_ids -> imageFileIds
-// -----------------------------------------------------------
+// ✅ CẬP NHẬT: Thêm $centerManagerId vào mutation tạo mới
 const CREATE_CENTER_MUTATION = `
   mutation CreateCenter(
     $name: String!, 
@@ -17,7 +14,8 @@ const CREATE_CENTER_MUTATION = `
     $googleMapUrl: String, 
     $logoFileId: String, 
     $imageFileIds: [String], 
-    $pricing: PricingInput
+    $pricing: PricingInput,
+    $centerManagerId: String
   ) {
     createCenter(
       name: $name, 
@@ -29,7 +27,8 @@ const CREATE_CENTER_MUTATION = `
       googleMapUrl: $googleMapUrl, 
       logoFileId: $logoFileId, 
       imageFileIds: $imageFileIds, 
-      pricing: $pricing
+      pricing: $pricing,
+      centerManagerId: $centerManagerId
     ) {
       centerId
       name
@@ -38,10 +37,10 @@ const CREATE_CENTER_MUTATION = `
 `;
 
 export const createCenterGQL = async (variables) => {
-    // Map biến từ JS sang đúng tên biến GraphQL
     const gqlVariables = {
         ...variables,
-        imageFileIds: variables.image_file_ids // Map image_file_ids (từ UI) -> imageFileIds (GraphQL)
+        imageFileIds: variables.image_file_ids,
+        // centerManagerId đã có sẵn trong variables
     };
     
     const response = await axiosInstance.post(GRAPHQL_ENDPOINT, {
@@ -51,6 +50,10 @@ export const createCenterGQL = async (variables) => {
     if (response.data.errors) throw new Error(response.data.errors[0].message);
     return response.data.data.createCenter;
 };
+
+// ... Các phần còn lại của file giữ nguyên như cũ ...
+// (Phần UpdateCenterMutation dùng $data nên không cần sửa gì ở đây, 
+// nó tự động nhận field mới từ Schema)
 
 const UPDATE_CENTER_MUTATION = `
   mutation UpdateCenter($centerId: String!, $data: UpdateCenterInput!) {
@@ -62,12 +65,11 @@ const UPDATE_CENTER_MUTATION = `
 `;
 
 export const updateCenterGQL = async (centerId, data) => {
-    // Map biến từ JS sang đúng tên biến GraphQL cho input object
     const gqlData = {
         ...data,
-        imageFileIds: data.image_file_ids, // Map image_file_ids -> imageFileIds
+        imageFileIds: data.image_file_ids, 
     };
-    delete gqlData.image_file_ids; // Xóa field cũ để tránh lỗi "unknown field"
+    delete gqlData.image_file_ids; 
 
     const response = await axiosInstance.post(GRAPHQL_ENDPOINT, {
         query: UPDATE_CENTER_MUTATION,
@@ -77,7 +79,7 @@ export const updateCenterGQL = async (centerId, data) => {
     return response.data.data.updateCenter;
 };
 
-// 💡 SỬA LỖI CHÍNH: Query dùng logoFileId và imageFileIds
+// ... (Phần còn lại giữ nguyên) ...
 const GET_ALL_CENTERS_QUERY = `
   query GetCenters {
     centers {
@@ -87,8 +89,8 @@ const GET_ALL_CENTERS_QUERY = `
       phone
       logoUrl 
       imageUrlList 
-      imageFileIds # Đã sửa từ image_file_ids
-      logoFileId   # Đã sửa từ logo_file_id
+      imageFileIds
+      logoFileId
       avgRating
       totalCourts
       isActive
@@ -103,7 +105,6 @@ export const getAllCentersGQL = async () => {
         const response = await axiosInstance.post(GRAPHQL_ENDPOINT, { query: GET_ALL_CENTERS_QUERY });
         if (response.data.errors) throw new Error(response.data.errors[0].message);
         
-        // Map lại data trả về để khớp với code UI (UI đang dùng image_file_ids)
         return response.data.data.centers.map(center => ({
             ...center,
             image_file_ids: center.imageFileIds,
@@ -124,12 +125,13 @@ const GET_CENTER_DETAIL_QUERY = `
       description
       logoUrl
       imageUrlList
-      imageFileIds # Đã sửa
-      logoFileId   # Đã sửa
+      imageFileIds
+      logoFileId
       facilities
       googleMapUrl
       totalCourts
       isActive
+      centerManagerId # ✅ Đảm bảo query lấy trường này về
       pricing {
         weekday { startTime endTime price }
         weekend { startTime endTime price }
@@ -146,7 +148,6 @@ export const getCenterInfoByIdGQL = async (centerId) => {
     if (response.data.errors) throw new Error(response.data.errors[0].message);
     
     const data = response.data.data.center;
-    // Map lại data
     return {
         ...data,
         image_file_ids: data.imageFileIds,

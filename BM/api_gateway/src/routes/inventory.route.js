@@ -11,7 +11,7 @@ const router = Router();
 const inventoryProxy = proxy(INVENTORY_SERVICE_URL, {
     proxyReqPathResolver: (req) => {
         // Lược bỏ prefix /inventories
-        return req.originalUrl.replace("/inventories", "");
+        return req.originalUrl;
     },
 
     proxyReqOptDecorator: (proxyReqOpts, req) => {
@@ -30,7 +30,7 @@ const inventoryProxy = proxy(INVENTORY_SERVICE_URL, {
 // -------------------------------------------------------------------
 
 // Lấy danh sách kho / chi tiết sản phẩm: không cần login
-router.get("/inventory/center/:centerId", inventoryProxy);
+router.get("/inventories/center/:centerId", inventoryProxy);
 router.get("/inventories", inventoryProxy);
 router.get("/inventories/:inventoryId", inventoryProxy);
 

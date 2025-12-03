@@ -160,6 +160,7 @@ export const OAuthService = {
                         userId: authUser.publicUserId, 
                         name: nameFromGoogle || username,
                         phone_number: null, // Vẫn là null (vì Google không cấp)
+                        role: authUser.role,
 
                         // 💡 THÊM 2 TRƯỜNG "SAO CHÉP" (COPY)
                         email: authUser.email,

@@ -35,6 +35,11 @@ export async function sellStock(data) {
 
 /** ✔ Lấy danh sách tồn kho = Inventory Service → /api/inventories/center/:centerId */
 export async function getInventoryList(centerId) {
+  // Nếu nhận object
+  if (typeof centerId === 'object' && centerId.centerId) {
+    centerId = centerId.centerId;
+  }
+
   try {
     const response = await axiosInstance.get(`/api/inventories/center/${centerId}`);
     return response;
@@ -43,3 +48,4 @@ export async function getInventoryList(centerId) {
     throw error;
   }
 }
+

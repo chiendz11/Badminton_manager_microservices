@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import { env } from "./env.config.js";
+import   {MONGODB_URI}  from "./env.config.js";
 
 export const connectDB = async () => {
   try {
-    await mongoose.connect(env.mongoUri);
+    await mongoose.connect(MONGODB_URI);
     console.log("Transaction Service DB Connected");
   } catch (error) {
     console.error("Transaction DB Connection Error:", error);

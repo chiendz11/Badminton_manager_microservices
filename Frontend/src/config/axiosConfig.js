@@ -1,8 +1,11 @@
 import axios from "axios";
 // Đảm bảo file token.api.js này KHÔNG import axiosInstance từ đây (tránh circular dependency)
-import { refreshTokenApi } from "../apiV2/auth_service/token.api.js"; 
+import { refreshTokenApi } from "../apiV2/auth_service/token.api.js";
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:8080";
+// 💡 SỬA LỖI: Thêm fallback. Nếu không tìm thấy biến env, mặc định dùng http://localhost
+const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost";
+
+console.log("Axios Base URL:", API_URL); // Log ra để kiểm tra
 
 let accessToken = null;
 
@@ -13,6 +16,9 @@ function setAccessToken(token) {
 const axiosInstance = axios.create({
     baseURL: API_URL,
     withCredentials: true,
+    headers: {
+        "Content-Type": "application/json",
+    },
 });
 
 // Request Interceptor
@@ -47,6 +53,10 @@ axiosInstance.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config;
         
+        if (!originalRequest) {
+             return Promise.reject(error);
+        }
+
         // 1. Chặn loop: Nếu URL là refresh token hoặc login thì không retry
         if (originalRequest.url.includes('/auth/refresh') || originalRequest.url.includes('/auth/login')) {
             return Promise.reject(error);
@@ -55,7 +65,6 @@ axiosInstance.interceptors.response.use(
         // 2. Xử lý 401 (Unauthorized)
         if (error.response?.status === 401 && !originalRequest._retry) {
             
-            // Nếu đang có một tiến trình refresh chạy rồi, các request sau xếp hàng chờ
             if (isRefreshing) {
                 return new Promise(function(resolve, reject) {
                     failedQueue.push({resolve, reject});
@@ -71,17 +80,13 @@ axiosInstance.interceptors.response.use(
             isRefreshing = true;
 
             try {
-                console.log("[Axios User] Token hết hạn, gọi Refresh...");
-                
-                // Gọi API Refresh (Singleton đã được xử lý ở token.api.js hoặc ở đây đều ổn nhờ isRefreshing lock)
+                // Gọi API Refresh
                 const data = await refreshTokenApi();
                 const newToken = data.accessToken;
                 
                 setAccessToken(newToken);
                 
-                console.log("[Axios User] Refresh thành công, giải phóng hàng đợi.");
-                
-                // Xử lý hàng đợi các request đang chờ
+                // Xử lý hàng đợi
                 processQueue(null, newToken);
                 
                 // Gọi lại request hiện tại
@@ -89,12 +94,11 @@ axiosInstance.interceptors.response.use(
                 return axiosInstance(originalRequest);
 
             } catch (refreshError) {
-                console.error("[Axios User] Refresh thất bại -> Logout.");
                 processQueue(refreshError, null);
                 setAccessToken(null);
                 
-                // Tùy chọn: Bắn event để AuthContext biết mà clear state ngay
-                // window.dispatchEvent(new Event("auth:logout"));
+                // Điều hướng về trang login nếu cần
+                // window.location.href = '/login';
                 
                 return Promise.reject(refreshError);
             } finally {

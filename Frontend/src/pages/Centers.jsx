@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import "../styles/centers.css";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
-import { checkPendingExists } from "../apis/booking";
+
 import { getAllCentersGQL, getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api.js";
 import { AuthContext } from "../contexts/AuthContext";
 import CenterDetailModal from "../pages/CenterDetailModal";
@@ -114,7 +114,7 @@ const Centers = () => {
       return;
     }
     try {
-      const { exists } = await checkPendingExists({ userId: user._id, centerId });
+      const { exists } = true;
       if (exists) {
         alert("Bạn đã có booking pending cho trung tâm này. Vui lòng chờ hết 5 phút.");
       } else {

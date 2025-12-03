@@ -4,7 +4,7 @@ import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller.js";
 import { validate } from "../middlewares/validation.middleware.js";
 
-import { registerSchema, loginSchema, changePasswordSchema } from "../validations/auth.validations.js"; 
+import { registerSchema, loginSchema, changePasswordSchema, adminResetPasswordSchema } from "../validations/auth.validations.js"; 
 
 const authRouter = Router();
 
@@ -14,6 +14,10 @@ const authRouter = Router();
 
 // POST /users: Đăng ký người dùng mới
 authRouter.post('/users', validate(registerSchema), AuthController.createUser);
+
+authRouter.post('/admin/users', // NÊN CÓ: Validate body
+    AuthController.createManagerByAdmin // Handler mới
+);
 
 // GET /verify-user/:token: Xác minh email người dùng
 authRouter.get('/verify-user/:token', AuthController.verifyUser);
@@ -48,9 +52,17 @@ authRouter.post('/refresh-token', AuthController.createNewToken);
  * - authMiddleware sẽ lấy `userId` từ Access Token và gắn vào `req.user.id`.
  */
 authRouter.put(
-    '/change-password',
+    '/users/me/password',
     validate(changePasswordSchema), // 💡 NÊN CÓ: Validate body
     AuthController.changePassword   // 💡 Handler mới
+);
+
+authRouter.put(
+    '/users/:userId/password',
+    // 💡 KHÔNG cần validate cũ (oldPassword là không cần thiết)
+    // Nếu bạn muốn validate độ mạnh của newPassword:
+    validate(adminResetPasswordSchema), 
+    AuthController.adminResetPassword
 );
 
 

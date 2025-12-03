@@ -28,8 +28,9 @@ export const typeDefs = gql`
         googleMapUrl: String
         isActive: Boolean
         logoFileId: String
-        imageFileIds: [String] # Đã sửa từ image_file_ids
+        imageFileIds: [String] 
         pricing: PricingInput
+        centerManagerId: String # ✅ ĐÃ THÊM TRƯỜNG NÀY ĐỂ FIX LỖI
     }
 
     extend type Mutation {
@@ -41,14 +42,24 @@ export const typeDefs = gql`
             totalCourts: Int,
             facilities: [String],
             logoFileId: String,
-            imageFileIds: [String], # Đã sửa từ image_file_ids
+            imageFileIds: [String], 
             googleMapUrl: String,
-            pricing: PricingInput
+            pricing: PricingInput,
+            centerManagerId: String # Cho phép truyền manager ngay lúc tạo (nếu cần)
         ): Center!
 
         updateCenter(centerId: String!, data: UpdateCenterInput!): Center!
 
         deleteCenter(centerId: String!): Boolean!
+    }
+
+    # 1. Định nghĩa Type Court
+    type Court {
+        id: ID
+        courtId: String!
+        name: String!
+        type: String
+        isActive: Boolean
     }
 
     type Center @key(fields: "centerId") {
@@ -64,7 +75,7 @@ export const typeDefs = gql`
         
         logoFileId: String
         logoUrl: String 
-        imageFileIds: [String] # Đã sửa từ image_file_ids
+        imageFileIds: [String]
         imageUrlList: [String]
         
         avgRating: Float
@@ -72,6 +83,9 @@ export const typeDefs = gql`
         isActive: Boolean
         centerManagerId: String
         pricing: Pricing
+
+        # 2. THÊM DÒNG NÀY: Mối quan hệ 1-n
+        courts: [Court] 
     }
     
     type Pricing { weekday: [TimeSlot], weekend: [TimeSlot] }

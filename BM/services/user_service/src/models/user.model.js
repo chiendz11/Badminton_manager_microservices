@@ -47,6 +47,17 @@ const userSchema = new mongoose.Schema({
         sparse: true, // Cho phép null/undefined là unique (ví dụ: đăng nhập Google)
         trim: true
     },
+    role: {
+        type: String,
+        enum: ['USER', 'CENTER_MANAGER', 'SUPER_ADMIN'], // Khớp với Prisma Enum
+        default: 'USER', 
+        index: true // 💡 Cực kỳ quan trọng để query nhanh
+    },
+    isActive: {
+        type: Boolean,
+        default: true,
+        index: true // ⚠️ Bắt buộc có Index để lọc nhanh (VD: Lấy list user đang active)
+    },
 
     // 💡 --- THÔNG TIN AVATAR (MÔ HÌNH HYBRID, DÙNG ENV CONFIG) --- 💡
 

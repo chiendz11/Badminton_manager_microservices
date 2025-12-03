@@ -143,11 +143,88 @@ export const UserController = {
                 user: newProfile 
             });
         } catch (error) {
-            if (error.code === 11000) {
-                return res.status(409).json({ message: "Lỗi: User ID hoặc Email đã tồn tại (Duplicate Key)." });
-            }
-            console.error("[UserController] Lỗi Server khi tạo profile:", error);
-            res.status(500).json({ message: "Lỗi Server nội bộ khi tạo profile." });
+        // 💡 CẢI TIẾN: Bắt lỗi cụ thể (nếu bạn thêm lỗi tùy chỉnh ở Service)
+        if (error.message === "USER_PROFILE_ALREADY_EXISTS") {
+             // Báo lỗi 409 rõ ràng
+             return res.status(409).json({ message: "Lỗi: User Profile đã tồn tại." });
+        }
+        
+        // Bắt lỗi Duplicate Key 11000 (cách hiện tại của bạn)
+        if (error.code === 11000) {
+            return res.status(409).json({ message: "Lỗi: Username hoặc Email đã tồn tại (Duplicate Key)." });
+        }
+        
+        console.error("[UserController] Lỗi Server khi tạo profile:", error);
+        res.status(500).json({ message: "Lỗi Server nội bộ khi tạo profile." });
+    }
+    },
+
+    async getAllUsers(req, res) {
+        try {
+            // Destructure thêm isActive
+            const { page, limit, search, level, sort, order, role, isActive } = req.query;
+
+            const result = await UserService.findAllUsers({
+                page, limit, search, level, sort, order, role, isActive
+            });
+
+            res.status(200).json({ success: true, ...result });
+        } catch (error) {
+            console.error("Error getting users:", error);
+            res.status(500).json({ success: false, message: "Lỗi Server." });
         }
     },
+
+    // 💡 API: Đổi trạng thái (Ban/Unban)
+    async updateUserStatus(req, res) {
+        try {
+            const { userId } = req.params;
+            const { isActive } = req.body; // Expect boolean: true/false
+
+            if (typeof isActive !== 'boolean') {
+                return res.status(400).json({ message: "Invalid status value" });
+            }
+
+            await UserService.toggleUserStatus(userId, isActive);
+
+            res.status(200).json({ 
+                success: true, 
+                message: `Đã cập nhật trạng thái user thành ${isActive ? 'ACTIVE' : 'BANNED'}` 
+            });
+        } catch (error) {
+            console.error("Error updating status:", error);
+            res.status(500).json({ success: false, message: "Lỗi Server." });
+        }
+    },
+    async updateUserById(req, res) {
+        try {
+            const { userId } = req.params; // Lấy publicUserId (UUID) từ URL
+            const updateData = req.body;
+
+            // Validation cơ bản
+            if (!userId) {
+                return res.status(400).json({ message: "User ID là bắt buộc." });
+            }
+
+            // Gọi Service
+            const updatedUser = await UserService.updateUserById(userId, updateData);
+
+            if (!updatedUser) {
+                return res.status(404).json({ message: "Không tìm thấy người dùng." });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "Cập nhật thông tin người dùng thành công.",
+                data: updatedUser
+            });
+
+        } catch (error) {
+            console.error(`[UserController] Lỗi cập nhật user ${req.params.userId}:`, error);
+            res.status(500).json({ 
+                success: false, 
+                message: error.message || "Lỗi Server nội bộ." 
+            });
+        }
+    }
 };

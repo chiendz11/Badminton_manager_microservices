@@ -32,5 +32,9 @@ router.put(
     upload.single('avatar'), // 💡 MULTER xử lý file với field name là 'avatar'
     UserController.updateAvatar // Controller xử lý file
 ); 
+router.get('/', UserController.getAllUsers);
+
+// 💡 [MỚI] PATCH /:userId (Gateway: /api/users/:userId) - Admin sửa Profile User
+router.patch('/:userId', UserController.updateUserById);
 
 export default router;

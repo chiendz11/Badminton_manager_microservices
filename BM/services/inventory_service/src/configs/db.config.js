@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import { env } from "./env.config.js";
+import { env, MONGODB_URI } from "./env.config.js";
 
 export const connectDB = async () => {
   try {
-    await mongoose.connect(env.mongoUri);
+    await mongoose.connect(MONGODB_URI);
     console.log("InventoryService Service DB Connected");
   } catch (error) {
     console.error("InventoryService DB Connection Error:", error);

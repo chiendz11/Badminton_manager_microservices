@@ -7,6 +7,7 @@ import newsRoutes from "./news.route.js";
 import inventoryRoutes from "./inventory.route.js";
 import transactionRoutes from "./transaction.route.js";
 
+import bookingRoutes from "./booking.route.js";
 const router = Router();
 
 // Logging middleware
@@ -23,6 +24,8 @@ router.use(ratingRoutes);
 router.use(newsRoutes);
 router.use(inventoryRoutes);
 router.use(transactionRoutes);
+router.use(bookingRoutes); // <--- Sử dụng route mới
+
 
 // Health check
 router.get("/", (req, res) => {

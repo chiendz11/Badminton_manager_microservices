@@ -2,6 +2,7 @@ import { InventoryService } from "../services/inventory.service.js";
 
 export const InventoryController = {
   createInventory: async (req, res) => {
+    console.log("REQ BODY RECEIVED:", req.body);
     try {
       const inventory = await InventoryService.create(req.body);
       res.status(201).json(inventory);
@@ -31,6 +32,15 @@ export const InventoryController = {
   updateInventory: async (req, res) => {
     try {
       const updated = await InventoryService.update(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  updateInventoryQuantity: async (req, res) => {
+    try {
+      const updated = await InventoryService.updateQuantity(req.params.id, req.body.quantityToAdd);
       res.json(updated);
     } catch (error) {
       res.status(400).json({ error: error.message });

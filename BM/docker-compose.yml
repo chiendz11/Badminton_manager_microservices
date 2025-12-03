@@ -1,0 +1,151 @@
+services:
+  # ----------------------------------------------------
+  # 1. AUTH SERVICE
+  # ----------------------------------------------------
+  auth_service:
+    build:
+      context: ./services/auth_service
+      dockerfile: Dockerfile
+    container_name: auth_service
+    expose:
+      - "8081"
+    environment:
+      - PORT=8081
+    # Trỏ đúng vào file .env trong thư mục con
+    env_file:
+      - ./services/auth_service/.env
+    restart: always
+    depends_on:
+      - user_service
+    networks:
+      - microservice_network
+    logging: &default-logging
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------
+  # 2. USER SERVICE
+  # ----------------------------------------------------
+  user_service:
+    build:
+      context: ./services/user_service
+      dockerfile: Dockerfile
+    container_name: user_service
+    expose:
+      - "8085"
+    environment:
+      - PORT=8085
+    env_file:
+      - ./services/user_service/.env
+    restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # ----------------------------------------------------
+  # 3. CENTER SERVICE
+  # ----------------------------------------------------
+  center_service:
+    build:
+      context: ./services/center_service
+      dockerfile: Dockerfile
+    container_name: center_service
+    expose:
+      - "5003"
+    environment:
+      - PORT=5003
+      # Gọi nội bộ sang Storage Service
+      - STORAGE_SERVICE_URL=http://storage_service:5002/api/v1
+    env_file:
+      - ./services/center_service/.env
+    restart: always
+    depends_on:
+      - storage_service
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # ----------------------------------------------------
+  # 4. STORAGE SERVICE
+  # ----------------------------------------------------
+  storage_service:
+    build:
+      context: ./services/storage_service
+      dockerfile: Dockerfile
+    container_name: storage_service
+    expose:
+      - "5002"
+    environment:
+      - PORT=5002
+    env_file:
+      - ./services/storage_service/.env
+    restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # ----------------------------------------------------
+  # 5. API GATEWAY (Cổng nội bộ)
+  # ----------------------------------------------------
+  api_gateway:
+    build:
+      context: ./api_gateway
+      dockerfile: Dockerfile
+    container_name: api_gateway
+    # Chỉ Expose nội bộ cho Nginx gọi, không mở ra ngoài
+    expose:
+      - "8080"
+    environment:
+      - PORT=8080
+      # Kết nối nội bộ đến các service con
+      - AUTH_SERVICE_URL=http://auth_service:8081
+      - USER_SERVICE_URL=http://user_service:8085
+      - CENTER_SERVICE_URL=http://center_service:5003
+      - STORAGE_SERVICE_URL=http://storage_service:5002
+      - INVENTORY_SERVICE_URL=http://host.docker.internal:8086
+      - TRANSACTION_SERVICE_URL=http://host.docker.internal:8087
+      - NEW_SERVICE_URL=http://host.docker.internal:8088
+      - RATING_SERVICE_URL=http://host.docker.internal:8084
+    env_file:
+      - ./api_gateway/.env
+    restart: always
+    depends_on:
+      - auth_service
+      - user_service
+      - center_service
+      - storage_service
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # ----------------------------------------------------
+  # 6. NGINX (Cổng Public duy nhất + WAF)
+  # ----------------------------------------------------
+  nginx:
+    build: 
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: bm_nginx
+    # Mở cổng 80 ra ngoài Internet
+    ports:
+      - "80:80" 
+    environment:
+      # --- CẤU HÌNH WAF ---
+      - MODSEC_RULE_ENGINE=On
+      - PARANOIA=1
+      # Tắt Proxy tự động để dùng file config riêng trong folder templates
+      - PROXY=0
+    volumes:
+      # Mount file log audit để kiểm tra tấn công
+      - ./nginx/modsec_audit.log:/var/log/modsec_audit.log
+    restart: always
+    depends_on:
+      - api_gateway
+    networks:
+      - microservice_network
+
+networks:
+  microservice_network:
+    driver: bridge

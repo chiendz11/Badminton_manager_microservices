@@ -95,11 +95,21 @@ const BookingTable = ({
                 }
 
                 let status;
-                if (statusStr.includes("đã đặt") || statusStr.includes("booked")) {
+                // --- FIX LỖI MÀU XANH KHI CLICK (Issue 1) ---
+                // Ưu tiên kiểm tra trạng thái "my" rõ ràng từ local state/cache
+                if (statusStr === "mypending") {
+                    status = "myPending";
+                } else if (statusStr === "myprocessing") {
+                    status = "myProcessing";
+                }
+                // --- END FIX LỖI MÀU XANH ---
+                else if (statusStr.includes("đã đặt") || statusStr.includes("booked")) {
                   status = "đã đặt";
                 } else if (statusStr.includes("pending")) {
+                  // Chỉ check ID khi status là 'pending' chung chung từ DB
                   status = userId && userId.toString() === currentUserId?.toString() ? "myPending" : "pending";
                 } else if (statusStr.includes("chờ xử lý") || statusStr.includes("processing")) {
+                  // Chỉ check ID khi status là 'processing' chung chung từ DB
                   status = userId && userId.toString() === currentUserId?.toString() ? "myProcessing" : "processing";
                 } else if (statusStr.includes("locked")) {
                   status = "locked";
@@ -115,14 +125,14 @@ const BookingTable = ({
                     : status === "pending"
                     ? "bg-yellow-500"
                     : status === "myPending"
-                    ? "bg-green-500"
+                    ? "bg-green-500" // Màu xanh lá cây khi chọn
                     : status === "processing"
                     ? "bg-[#0288D1]"
                     : status === "myProcessing"
                     ? "bg-[#0288D1]"
                     : status === "đã đặt"
                     ? "bg-red-500"
-                    : "bg-gray-500";
+                    : "bg-gray-500"; // Màu xám cho trạng thái locked
 
                 const textColor =
                   status === "trống"

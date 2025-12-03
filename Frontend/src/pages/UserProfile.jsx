@@ -15,7 +15,7 @@ import { getBookingHistory, cancelBooking, deleteBooking } from '../apis/booking
 // 3. updateUserPassword: Cập nhật mật khẩu (PUT /me/password - giả định)
 import { getDetailedBookingStats, getChartData } from '../apis/users';
 import { updateMyProfile } from '../apiV2/user_service/rest/users.api';
-import { updateUserPassword } from '../apiV2/auth_service/auth.api';
+import { updateUserPassword } from '../apiV2/auth_service/rest/users.api';
 import { fetchUserInfo } from '../apiV2/user_service/rest/users.api';
 // 💡 LƯU Ý:
 // 💡 ProfileInfoTab sẽ tự import 'updateAvatar' (PUT /me/avatar)
