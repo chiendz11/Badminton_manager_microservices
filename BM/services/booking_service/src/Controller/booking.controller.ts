@@ -87,17 +87,11 @@ export class BookingController {
     @Param('id') id: string,
     @Body('status') status: BookingStatus
   ) {
-    switch (status) {
-      case BookingStatus.PROCESSING:
-        const updated = await this.bookingService.updateBookingStatusToProcessing(id);
-        if (!updated) throw new NotFoundException('Booking not found');
-        return updated;
-      case BookingStatus.CONFIRMED:
-      case BookingStatus.CANCELLED:
-      case BookingStatus.FAILED:
-      case BookingStatus.PENDING:
-      default:
-        throw new NotFoundException('Status update not supported');
+    const updated = await this.bookingService.updateBookingStatus(id, status);
+    if (!updated) {
+      throw new NotFoundException('Booking not found');
+    } else {
+      return updated;
     }
   }
 

@@ -114,9 +114,6 @@ services:
       # --- SECURITY & INTERNAL ---
       - INTERNAL_AUTH_SECRET=${CENTER_INTERNAL_AUTH_SECRET}
       - ALLOWED_INTERNAL_SERVICES=${CENTER_ALLOWED_SERVICES}
-      
-      # --- ASSETS & STORAGE ---
-      # Lưu ý: Code gọi là DEFAULT_LOGO_FILE_ID, file env tổng gọi là CENTER_DEFAULT_LOGO_ID
       - DEFAULT_LOGO_FILE_ID=${CENTER_DEFAULT_LOGO_ID}
       
       # Code gọi STORAGE_SERVICE_URL -> Lấy giá trị CENTER_STORAGE_URL
@@ -212,6 +209,8 @@ services:
     ports:
       - "8082:8082" # Map port ra ngoài để test local nếu cần
     environment:
+      - REDIS_HOST=redis  
+      - REDIS_PORT=6379
       - NODE_ENV=${NODE_ENV}
       
       # --- APP CONFIG ---
@@ -247,6 +246,14 @@ services:
       - "4040:4040" # Ngrok web interface
     depends_on:
       - booking_service
+
+  redis:
+    image: redis:alpine
+    container_name: bm_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - microservice_network
 
   # ----------------------------------------------------
   # 6. NGINX (Cổng Public duy nhất + WAF)

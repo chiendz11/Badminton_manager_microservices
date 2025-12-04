@@ -10,6 +10,8 @@ import { CourtBookingDetail } from 'src/Schema/court-booking-detail.schema';
 import { PricingSlot } from 'src/Schema/center-pricing.schema';
 import { User } from 'src/Schema/user.schema';
 import { startOfDay, endOfDay } from 'date-fns'
+import { InjectQueue } from '@nestjs/bullmq';
+import { deprecate } from 'util';
 
 const START_HOUR = 5; // e.g., 5 AM
 const END_HOUR = 22;  // e.g., 10 PM
@@ -19,6 +21,8 @@ type CreateBookingParams = CreateBookingDTO & {userId: string};
 @Injectable()
 export class BookingService {
   constructor(
+    @InjectQueue('booking-expiration') 
+    private bookingQueue: any,
     @InjectModel(Booking.name)
     private bookingModel: Model<BookingDocument>,
     @InjectModel(Center.name)
@@ -197,6 +201,19 @@ export class BookingService {
     let totalPrice = this.calculateTotalPrice(user, center, data.bookDate, newBooking.courtBookingDetails);
     newBooking.price = totalPrice;
     const savedBooking = await newBooking.save();
+
+    await this.bookingQueue.add(
+      'check-expiry',
+      { 
+        bookingId: newBooking._id.toString() 
+      }, 
+      { 
+        delay: 5 * 60 * 1000,
+        removeOnComplete: true 
+      }
+    );
+
+    console.log(`Scheduled auto-cancel for booking ${newBooking._id} in 5 minutes`);
     return savedBooking;
   }
 
@@ -212,6 +229,20 @@ export class BookingService {
     return this.bookingModel.find({ userId }).exec();
   }
 
+  async updateBookingStatus(bookingId: string, status: BookingStatus): Promise<Booking | null> {
+    const booking = await this.bookingModel.findById(bookingId);
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    booking.bookingStatus = status;
+    return booking.save();
+  }
+
+  /**
+   * @deprecated Use updateBookingStatus with BookingStatus.PROCESSING instead
+   */
   async updateBookingStatusToProcessing(bookingId: string): Promise<Booking | null> {
     const booking = await this.bookingModel.findById(bookingId);
 
@@ -223,6 +254,9 @@ export class BookingService {
     return booking.save();
   }
 
+  /**
+   * @deprecated Use updateBookingStatus with BookingStatus.CONFIRMED instead
+   */
   async updateBookingStatusToConfirmed(bookingId: string): Promise<Booking | null> {
     const booking = await this.bookingModel.findById(bookingId);
 
