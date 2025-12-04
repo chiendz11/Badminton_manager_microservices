@@ -1,3 +1,5 @@
+
+
 services:
   # ----------------------------------------------------
   # 1. AUTH SERVICE
@@ -10,10 +12,30 @@ services:
     expose:
       - "8081"
     environment:
-      - PORT=8081
-    # Trỏ đúng vào file .env trong thư mục con
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${AUTH_PORT}
+      
+      # Database & JWT (Map từ biến AUTH_... sang tên biến code cần)
+      - DATABASE_URL=${AUTH_DATABASE_URL}
+      - JWT_SECRET=${AUTH_JWT_SECRET}
+      - JWT_REFRESH_SECRET=${AUTH_JWT_REFRESH_SECRET}
+      - JWT_EXPIRY=${AUTH_JWT_EXPIRY}
+      - REFRESH_TOKEN_EXPIRY=${AUTH_REFRESH_TOKEN_EXPIRY}
+      
+      # Internal & Mail
+      - API_GATEWAY_URL=${AUTH_API_GATEWAY_URL}
+      - USER_SERVICE_INTERNAL_URL=${AUTH_USER_SERVICE_URL}
+      - INTERNAL_JOB_SECRET=${AUTH_INTERNAL_JOB_SECRET}
+      - EMAIL_USER=${AUTH_EMAIL_USER}
+      - EMAIL_PASS=${AUTH_EMAIL_PASS}
+      
+      # Google OAuth
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_OAUTH_REDIRECT_URL=${GOOGLE_OAUTH_REDIRECT_URL}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
     env_file:
-      - ./services/auth_service/.env
+      - .env
     restart: always
     depends_on:
       - user_service
@@ -36,9 +58,33 @@ services:
     expose:
       - "8085"
     environment:
-      - PORT=8085
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${USER_PORT}
+      
+      # --- DATABASE ---
+      # Code gọi DATABASE_URL -> Lấy giá trị USER_DATABASE_URL từ .env
+      - DATABASE_URL=${USER_DATABASE_URL}
+      
+      # --- JWT ---
+      - JWT_SECRET=${USER_JWT_SECRET}
+      - JWT_REFRESH_SECRET=${USER_JWT_REFRESH_SECRET}
+      - JWT_EXPIRY=${USER_JWT_EXPIRY}
+      - REFRESH_TOKEN_EXPIRY=${USER_REFRESH_TOKEN_EXPIRY}
+      
+      # --- INTERNAL SERVICE URLs ---
+      - API_GATEWAY_URL=${USER_API_GATEWAY_URL}
+      - STORAGE_SERVICE_URL=${USER_STORAGE_SERVICE_URL}
+      - INTERNAL_JOB_SECRET=${USER_INTERNAL_JOB_SECRET}
+      
+      # --- EMAIL (Gmail - Lưu ý khác với Auth dùng VNU Mail) ---
+      - EMAIL_USER=${USER_EMAIL_USER}
+      - EMAIL_PASS=${USER_EMAIL_PASS}
+      
+      # --- DEFAULT ASSETS ---
+      - DEFAULT_AVATAR_FILE_ID=${DEFAULT_AVATAR_FILE_ID}
+      - DEFAULT_AVATAR_URL=${DEFAULT_AVATAR_URL}
     env_file:
-      - ./services/user_service/.env
+      - .env
     restart: always
     networks:
       - microservice_network
@@ -55,11 +101,28 @@ services:
     expose:
       - "5003"
     environment:
-      - PORT=5003
-      # Gọi nội bộ sang Storage Service
-      - STORAGE_SERVICE_URL=http://storage_service:5002/api/v1
+      - NODE_ENV=${NODE_ENV}
+      
+      # --- APP CONFIG ---
+      # Code gọi PORT -> Lấy giá trị CENTER_PORT
+      - PORT=${CENTER_PORT}
+      
+      # --- DATABASE ---
+      # Code gọi MONGODB_URI -> Lấy giá trị CENTER_MONGO_URI
+      - MONGODB_URI=${CENTER_MONGO_URI}
+      
+      # --- SECURITY & INTERNAL ---
+      - INTERNAL_AUTH_SECRET=${CENTER_INTERNAL_AUTH_SECRET}
+      - ALLOWED_INTERNAL_SERVICES=${CENTER_ALLOWED_SERVICES}
+      
+      # --- ASSETS & STORAGE ---
+      # Lưu ý: Code gọi là DEFAULT_LOGO_FILE_ID, file env tổng gọi là CENTER_DEFAULT_LOGO_ID
+      - DEFAULT_LOGO_FILE_ID=${CENTER_DEFAULT_LOGO_ID}
+      
+      # Code gọi STORAGE_SERVICE_URL -> Lấy giá trị CENTER_STORAGE_URL
+      - STORAGE_SERVICE_URL=${CENTER_STORAGE_URL}
     env_file:
-      - ./services/center_service/.env
+      - .env
     restart: always
     depends_on:
       - storage_service
@@ -78,9 +141,22 @@ services:
     expose:
       - "5002"
     environment:
-      - PORT=5002
+      - NODE_ENV=${NODE_ENV}
+      
+      # --- APP CONFIG ---
+      - PORT=${STORAGE_PORT}
+      - MONGODB_URI=${STORAGE_MONGO_URI}
+      
+      # --- SECURITY ---
+      - INTERNAL_JOB_SECRET=${STORAGE_INTERNAL_JOB_SECRET}
+      - ALLOWED_SERVICES=${STORAGE_ALLOWED_SERVICES}
+      
+      # --- CLOUDINARY (Tên biến thường giống nhau) ---
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
     env_file:
-      - ./services/storage_service/.env
+      - .env
     restart: always
     networks:
       - microservice_network
@@ -98,15 +174,26 @@ services:
     expose:
       - "8080"
     environment:
-      - PORT=8080
-      # Kết nối nội bộ đến các service con
-      - AUTH_SERVICE_URL=http://auth_service:8081
-      - USER_SERVICE_URL=http://user_service:8085
-      - CENTER_SERVICE_URL=http://center_service:5003
-      - STORAGE_SERVICE_URL=http://storage_service:5002
-      - BOOKING_SERVICE_URL=http://booking_service:8082
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${GATEWAY_PORT}
+      
+      # --- SERVICE URLs MAPPING ---
+      # Code (Trái) = Env tổng (Phải)
+      - AUTH_SERVICE_URL=${GATEWAY_AUTH_URL}
+      - BOOKING_SERVICE_URL=${GATEWAY_BOOKING_URL}
+      - PAYMENT_SERVICE_URL=${GATEWAY_PAYMENT_URL}
+      - REVIEW_SERVICE_URL=${GATEWAY_REVIEW_URL}
+      - USER_SERVICE_URL=${GATEWAY_USER_URL}
+      - CENTER_SERVICE_URL=${GATEWAY_CENTER_URL}
+      - STORAGE_SERVICE_URL=${GATEWAY_STORAGE_URL}
+      
+      # --- SHARED CONFIG ---
+      - JWT_SECRET=${SHARED_JWT_SECRET}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
+      - GOOGLE_OAUTH_REDIRECT_URL=${GOOGLE_OAUTH_REDIRECT_URL}
+      - INTERNAL_AUTH_SECRET=${GATEWAY_INTERNAL_AUTH_SECRET}
     env_file:
-      - ./api_gateway/.env
+      - .env
     restart: always
     depends_on:
       - auth_service
@@ -125,11 +212,23 @@ services:
     ports:
       - "8082:8082" # Map port ra ngoài để test local nếu cần
     environment:
-      - PORT=8082
-      - MONGO_URI=mongodb+srv://23021490:bop29042005@badmintonmanager.sxbzi.mongodb.net/BookingService?retryWrites=true&w=majority
-      - PAYOS_CLIENT_ID=c22fec15-aa3c-4ae8-bd66-c7f23e7b3a8f
-      - PAYOS_API_KEY=b7582fae-00bb-4fd6-9627-75e43b4f68a9
-      - PAYOS_CHECKSUM_KEY=2faf30495b796b21441f6f5bb741c2c229aa7c8ba139a5f74cb6c7af86f931cd
+      - NODE_ENV=${NODE_ENV}
+      
+      # --- APP CONFIG ---
+      # Code gọi PORT -> Lấy giá trị BOOKING_PORT (8082)
+      - PORT=${BOOKING_PORT}
+      
+      # --- DATABASE ---
+      # Code gọi MONGO_URI -> Lấy giá trị BOOKING_MONGO_URI
+      - MONGO_URI=${BOOKING_MONGO_URI}
+      
+      # --- PAYMENT GATEWAY (PayOS) ---
+      # Các key này tên giống nhau giữa code và env tổng, nhưng vẫn map explicit cho chắc
+      - PAYOS_CLIENT_ID=${PAYOS_CLIENT_ID}
+      - PAYOS_API_KEY=${PAYOS_API_KEY}
+      - PAYOS_CHECKSUM_KEY=${PAYOS_CHECKSUM_KEY}
+    env_file:
+      - .env
     networks:
       - microservice_network
 
@@ -139,7 +238,9 @@ services:
     restart: on-failure:5
     command: "http --domain=eliz-unrelinquishable-unpendulously.ngrok-free.dev booking_service:8082"
     environment:
-      - NGROK_AUTHTOKEN=36HgOd4rRmoAPoroeJy8xdpZ7Fe_42hp3zLpvJWq5AqrUgaFE
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    env_file:
+      - .env
     networks:
       - microservice_network
     ports:
