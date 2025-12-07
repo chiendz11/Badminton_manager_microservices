@@ -79,38 +79,81 @@ export const updateCenterGQL = async (centerId, data) => {
     return response.data.data.updateCenter;
 };
 
-// ... (Phần còn lại giữ nguyên) ...
+const CENTER_SUMMARY_FRAGMENT = `
+  fragment CenterSummary on Center {
+    phone
+    centerId
+    name
+    address
+    logoUrl 
+    imageUrlList # 💡 THÊM: Cần lấy danh sách ảnh để chọn làm ảnh bìa (cover)
+    avgRating
+    totalCourts
+    isActive
+    centerManagerId
+  }
+`;
+
+// Fragment cho thông tin chi tiết (dùng trong modal)
+const CENTER_DETAIL_FRAGMENT = `
+  fragment CenterDetail on Center {
+    ...CenterSummary 
+    phone 
+    description
+    googleMapUrl
+    facilities
+    bookingCount
+
+    courts {
+       courtId
+       name
+       type
+       isActive
+    }
+    
+    pricing {
+      weekday {
+        startTime
+        endTime
+        price
+      }
+      weekend {
+        startTime
+        endTime
+        price
+      }
+    }
+  }
+  ${CENTER_SUMMARY_FRAGMENT}
+`;
+
+// -----------------------------------------------------------
+// 💡 II. QUERIES VÀ FUNCTIONS
+// -----------------------------------------------------------
+
 const GET_ALL_CENTERS_QUERY = `
   query GetCenters {
     centers {
-      centerId
-      name
-      address
-      phone
-      logoUrl 
-      imageUrlList 
-      imageFileIds
-      logoFileId
-      avgRating
-      totalCourts
-      isActive
-      centerManagerId
-      googleMapUrl
+      ...CenterSummary
     }
   }
+  ${CENTER_SUMMARY_FRAGMENT}
 `;
 
 export const getAllCentersGQL = async () => {
     try {
-        const response = await axiosInstance.post(GRAPHQL_ENDPOINT, { query: GET_ALL_CENTERS_QUERY });
-        if (response.data.errors) throw new Error(response.data.errors[0].message);
-        
-        return response.data.data.centers.map(center => ({
-            ...center,
-            image_file_ids: center.imageFileIds,
-            logo_file_id: center.logoFileId
-        }));
+        const response = await axiosInstance.post(GRAPHQL_ENDPOINT, {
+            query: GET_ALL_CENTERS_QUERY,
+        });
+
+        if (response.data.errors) {
+            console.error("GraphQL Errors:", response.data.errors);
+            throw new Error(response.data.errors[0].message || "GraphQL query failed.");
+        }
+
+        return response.data.data.centers;
     } catch (error) {
+        console.error("Error fetching all centers via GraphQL:", error);
         throw error;
     }
 };
@@ -118,41 +161,31 @@ export const getAllCentersGQL = async () => {
 const GET_CENTER_DETAIL_QUERY = `
   query GetCenterDetail($centerId: String!) {
     center(centerId: $centerId) {
-      centerId
-      name
-      address
-      phone
-      description
-      logoUrl
-      imageUrlList
-      imageFileIds
-      logoFileId
-      facilities
-      googleMapUrl
-      totalCourts
-      isActive
-      centerManagerId # ✅ Đảm bảo query lấy trường này về
-      pricing {
-        weekday { startTime endTime price }
-        weekend { startTime endTime price }
-      }
+      ...CenterDetail
     }
   }
+  ${CENTER_DETAIL_FRAGMENT}
 `;
 
 export const getCenterInfoByIdGQL = async (centerId) => {
-    const response = await axiosInstance.post(GRAPHQL_ENDPOINT, {
-        query: GET_CENTER_DETAIL_QUERY,
-        variables: { centerId },
-    });
-    if (response.data.errors) throw new Error(response.data.errors[0].message);
-    
-    const data = response.data.data.center;
-    return {
-        ...data,
-        image_file_ids: data.imageFileIds,
-        logo_file_id: data.logoFileId
-    };
+    try {
+        const response = await axiosInstance.post(GRAPHQL_ENDPOINT, {
+            query: GET_CENTER_DETAIL_QUERY,
+            variables: {
+                centerId: centerId,
+            },
+        });
+
+        if (response.data.errors) {
+            console.error("GraphQL Errors:", response.data.errors);
+            throw new Error(response.data.errors[0].message || "GraphQL query failed.");
+        }
+
+        return response.data.data.center;
+    } catch (error) {
+        console.error(`Error fetching center info for ID ${centerId} via GraphQL:`, error);
+        throw error;
+    }
 };
 
 export const deleteCenterGQL = async (centerId) => {

@@ -18,6 +18,7 @@ import ResetPasswordPage from "./pages/ResetPassword";
 // (AuthProvider đã được bọc bên ngoài trong index.js)
 import WeatherDisplay from './components/WeatherDisplay';
 import Scroll from './components/Scroll';
+import PassCourtPage from './pages/PassCourts';
 
 // 💡 1. IMPORT "LÍNH GÁC CỔNG" CỦA BẠN
 import ProtectedLayout from './components/ProtectedLayout';
@@ -51,6 +52,7 @@ function App() {
         <Route path="/centers" element={<Centers />} />
         <Route path="/news" element={<News />} />
         <Route path="/reset-password/:token/:userId" element={<ResetPasswordPage />} />
+        <Route path="/pass-court" element={<PassCourtPage />} />
 
         {/* 💡 Route này BẮT BUỘC phải "công khai", 
             vì đây là nơi user (chưa hoàn thiện SĐT) bị redirect đến.

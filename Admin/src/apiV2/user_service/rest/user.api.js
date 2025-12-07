@@ -27,23 +27,19 @@ export const getAllUsers = async (params) => {
   }
 };
 
-/**
- * Cập nhật hồ sơ (JSON data: name, phone_number...).
- * Gọi PATCH /api/users/me
- * @param {object} profileData - Dữ liệu JSON (vd: { name: 'New Name' })
- */
-export const updateMyProfile = async (profileData) => {
-  try {
-    // API này CHỈ gửi JSON
-    const response = await api.patch('/api/users/me', profileData, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    return response.data;
-  } catch (error) {
-    console.error("Error updating user profile:", error);
-    throw error;
-  }
+// 💡 [MỚI] 4. Cập nhật thông tin Profile (Tên, SĐT,...) cho User bất kỳ
+// Dành cho Admin chỉnh sửa thông tin người dùng
+export const updateUserProfile = async (userId, data) => {
+    try {
+        // data: { name, phone_number, ... } (Không bao gồm password/email nếu API không hỗ trợ)
+        const response = await axiosInstance.patch(`/api/users/${userId}`, data);
+        return response.data;
+    } catch (error) {
+        console.error("Error updating user profile:", error);
+        throw error;
+    }
 };
+
 
 /**
  * 💡 API ĐÃ SỬA: Cập nhật ảnh đại diện (File upload).
@@ -61,7 +57,7 @@ export const updateAvatar = async (avatarFile) => {
 
     // 3. Gọi API (PUT /me/avatar) với FormData.
     // Axios sẽ tự động set Content-Type: multipart/form-data
-    const response = await api.put('/api/users/me/avatar', formData);
+    const response = await axiosInstance.put('/api/users/me/avatar', formData);
     
     // Trả về profile đã cập nhật (chứa avatar_url mới)
     return response.data; 

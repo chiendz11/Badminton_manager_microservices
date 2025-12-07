@@ -1,25 +1,22 @@
 import React from "react";
 
 /**
- * BookingTable (phiên bản dành cho Admin):
- * - Hiển thị các trạng thái:
- *   - "booked" (màu đỏ)
- *   - "pending" (màu vàng)
- *   - "chờ xử lý" (màu xanh nước biển, --processing-color: #0288D1)
- *   - "locked" (màu xám)
- *   - "trống" (màu trắng)
- * - Hiển thị username trong các ô "đã đặt", "pending", và "chờ xử lý".
- * - Không cho người dùng click để toggle.
+ * BookingTable (Admin View)
+ * Cập nhật:
+ * - Fix lỗi không nhận diện được dữ liệu do sai key (dùng court.courtId).
+ * - Hiển thị đúng màu cho trạng thái "locked" (xám).
+ * - Hiển thị tên người đặt cho các trạng thái pending/booked/processing.
  */
 const BookingTable = ({ courts, bookingData, times, slotCount }) => {
   return (
     <div className="mt-4 transparent p-2 rounded-md">
       <table className="table-fixed w-full" style={{ borderCollapse: "collapse" }}>
+        {/* --- HEADERS (GIỜ) --- */}
         <thead>
           <tr>
             <th
               className="p-2 transparent text-center font-bold text-black"
-              style={{ width: "80px" }} // Tăng từ 60px lên 80px
+              style={{ width: "80px" }}
             ></th>
             {Array.from({ length: slotCount }, (_, i) => {
               const startHour = times[i];
@@ -28,7 +25,7 @@ const BookingTable = ({ courts, bookingData, times, slotCount }) => {
                 <th
                   key={i}
                   className="transparent text-black relative"
-                  style={{ width: "60px" }} // Tăng từ 40px lên 60px
+                  style={{ width: "60px" }}
                 >
                   <div
                     className="absolute bottom-0 bg-yellow-500"
@@ -70,81 +67,104 @@ const BookingTable = ({ courts, bookingData, times, slotCount }) => {
           </tr>
         </thead>
 
+        {/* --- BODY (DANH SÁCH SÂN & SLOT) --- */}
         <tbody>
-          {courts.map((court, rowIndex) => (
-            <tr key={rowIndex} style={{ border: "1px solid black" }}>
-              <td
-                className="bg-green-200 text-black text-center font-bold"
-                style={{ width: "80px", padding: "2px" }} // Tăng từ 60px lên 80px
-              >
-                {court.name}
-              </td>
+          {courts.map((court, rowIndex) => {
+            // 💡 QUAN TRỌNG: Lấy đúng ID để map với bookingData
+            // Dữ liệu mới dùng courtId, dữ liệu cũ có thể dùng _id hoặc id
+            const courtKey = court.courtId || court._id || court.id;
+            
+            // Lấy mảng trạng thái của sân này
+            const courtSchedule = bookingData ? bookingData[courtKey] : [];
 
-              {Array.from({ length: slotCount }, (_, colIndex) => {
-                const rawStatus =
-                  bookingData &&
-                  bookingData[court._id] &&
-                  Array.isArray(bookingData[court._id]) &&
-                  colIndex < bookingData[court._id].length
-                    ? bookingData[court._id][colIndex]
+            return (
+              <tr key={rowIndex} style={{ border: "1px solid black" }}>
+                {/* Tên sân */}
+                <td
+                  className="bg-green-200 text-black text-center font-bold"
+                  style={{ width: "80px", padding: "2px" }}
+                >
+                  {court.name}
+                </td>
+
+                {/* Các slot giờ */}
+                {Array.from({ length: slotCount }, (_, colIndex) => {
+                  // Lấy trạng thái raw từ mảng
+                  const rawStatus = (Array.isArray(courtSchedule) && colIndex < courtSchedule.length)
+                    ? courtSchedule[colIndex]
                     : "trống";
 
-                // Xử lý rawStatus là chuỗi hoặc đối tượng
-                const isObject = typeof rawStatus === "object";
-                const statusStr = isObject ? rawStatus.status?.toLowerCase() : rawStatus.toLowerCase();
-                const name = isObject ? rawStatus.name || "" : "";
+                  // Xử lý status: có thể là String ("trống", "locked") hoặc Object ({status: "pending", ...})
+                  let statusStr = "";
+                  let name = "";
 
-                // Xác định trạng thái
-                let status;
-                if (statusStr.includes("đã đặt") || statusStr.includes("booked")) {
-                  status = "booked";
-                } else if (statusStr.includes("pending")) {
-                  status = "pending";
-                } else if (statusStr.includes("chờ xử lý") || statusStr.includes("processing")) {
-                  status = "processing";
-                } else if (statusStr.includes("locked")) {
-                  status = "locked";
-                } else {
-                  status = "none";
-                }
+                  if (typeof rawStatus === "object" && rawStatus !== null) {
+                    statusStr = rawStatus.status ? rawStatus.status.toLowerCase() : "trống";
+                    name = rawStatus.name || "";
+                  } else {
+                    statusStr = String(rawStatus).toLowerCase();
+                  }
 
-                const bgColor =
-                  status === "booked"
-                    ? "bg-red-500"
-                    : status === "pending"
-                    ? "bg-yellow-500"
-                    : status === "processing"
-                    ? "bg-[#0288D1]" // Sử dụng --processing-color: #0288D1
-                    : status === "locked"
-                    ? "bg-gray-300"
-                    : "bg-white";
+                  // Chuẩn hóa trạng thái để map màu
+                  let displayStatus;
+                  if (statusStr.includes("locked")) {
+                    displayStatus = "locked";
+                  } else if (statusStr.includes("đã đặt") || statusStr.includes("booked") || statusStr.includes("paid")) {
+                    displayStatus = "booked";
+                  } else if (statusStr.includes("pending")) {
+                    displayStatus = "pending";
+                  } else if (statusStr.includes("chờ xử lý") || statusStr.includes("processing")) {
+                    displayStatus = "processing";
+                  } else {
+                    displayStatus = "none"; // Trống
+                  }
 
-                const textColor =
-                  status === "booked" || status === "pending" || status === "processing"
-                    ? "text-white"
-                    : "text-black";
+                  // Map màu sắc
+                  const bgColor =
+                    displayStatus === "booked"
+                      ? "bg-red-500"
+                      : displayStatus === "pending"
+                      ? "bg-yellow-500"
+                      : displayStatus === "processing"
+                      ? "bg-[#0288D1]"
+                      : displayStatus === "locked"
+                      ? "bg-gray-300" // Màu xám cho locked
+                      : "bg-white";
 
-                return (
-                  <td
-                    key={colIndex}
-                    style={{
-                      width: "60px", // Tăng từ 40px lên 60px
-                      height: "40px", // Tăng từ 30px lên 40px
-                      padding: "0",
-                      border: "1px solid black",
-                    }}
-                  >
-                    <div
-                      className={`h-full flex items-center justify-center ${bgColor} ${textColor} text-xs font-medium`}
-                      title={name ? `${status === "processing" ? "Đang xử lý" : status === "booked" ? "Đã đặt" : "Pending"} bởi ${name}` : status}
+                  // Màu chữ
+                  const textColor =
+                    displayStatus === "booked" || displayStatus === "pending" || displayStatus === "processing"
+                      ? "text-white"
+                      : "text-black";
+
+                  return (
+                    <td
+                      key={colIndex}
+                      style={{
+                        width: "60px",
+                        height: "40px",
+                        padding: "0",
+                        border: "1px solid black",
+                      }}
                     >
-                      {(status === "booked" || status === "pending" || status === "processing") && name ? name : ""}
-                    </div>
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
+                      <div
+                        className={`h-full flex items-center justify-center ${bgColor} ${textColor} text-xs font-medium cursor-default select-none`}
+                        title={
+                            displayStatus === "locked" ? "Đã qua giờ" :
+                            name ? `${displayStatus.toUpperCase()} bởi ${name}` : displayStatus
+                        }
+                      >
+                        {/* Chỉ hiển thị tên nếu không phải là locked hoặc trống */}
+                        {(displayStatus === "booked" || displayStatus === "pending" || displayStatus === "processing") && name
+                          ? name
+                          : ""}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -111,8 +111,6 @@ const BookingTable = ({
                   // Logic xác định status hiển thị
                   if (statusStr === "mypending") {
                     status = "myPending";
-                  } else if (statusStr === "myprocessing") {
-                    status = "myProcessing";
                   } else if (
                     statusStr.includes("đã đặt") ||
                     statusStr.includes("booked") ||
@@ -126,16 +124,6 @@ const BookingTable = ({
                       userId.toString() === currentUserId.toString()
                         ? "myPending"
                         : "pending";
-                  } else if (
-                    statusStr.includes("chờ xử lý") ||
-                    statusStr.includes("processing")
-                  ) {
-                    status =
-                      userId &&
-                      currentUserId &&
-                      userId.toString() === currentUserId.toString()
-                        ? "myProcessing"
-                        : "processing";
                   } else if (statusStr === "locked") {
                     status = "locked";
                   } else {
@@ -153,10 +141,6 @@ const BookingTable = ({
                       ? "bg-yellow-500"
                       : status === "myPending"
                       ? "bg-green-500"
-                      : status === "processing"
-                      ? "bg-[#0288D1]" // Xanh dương
-                      : status === "myProcessing"
-                      ? "bg-[#0288D1]"
                       : status === "đã đặt"
                       ? "bg-red-500"
                       : "bg-gray-400"; // Locked: Màu xám

@@ -1,441 +1,392 @@
-import React, { useState, useEffect, useMemo, useContext } from "react";
+import React, { useState, useEffect, useMemo, useContext, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import BookingTable from "../components/BookingTable";
 import Legend from "../components/legend";
-import { fetchFullMapping, getAllCenters, getCourtsByCenter } from "../apis/centerStatus";
-import { FaCalendarAlt, FaHome, FaArrowLeft } from "react-icons/fa";
-import socket from "../socket"; // Đường dẫn tới file socket.js
+import { FaCalendarAlt, FaHome, FaArrowLeft, FaSyncAlt } from "react-icons/fa";
 import { AuthContext } from '../contexts/AuthContext.jsx'; 
-// 💡 IMPORT ROLES
-import { ROLES } from '../constants/roles'; // Đã thay đổi đường dẫn nếu cần
+import { ROLES } from '../constants/roles'; 
+import LoadingSpinner from "../components/LoadingSpinner";
+
+// 💡 IMPORT API
+import { getAllCentersGQL, getCenterInfoByIdGQL } from "../apiV2/center_service/graphql/center.api.js";
+import { getPendingMapping } from "../apiV2/booking_service/rest/booking.api.js";
 
 const times = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
 const slotCount = times.length - 1;
 
-// Hàm chuẩn hóa ngày theo múi giờ địa phương
+// Hàm chuẩn hóa ngày (YYYY-MM-DD)
 const getLocalDateString = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0"); // Tháng bắt đầu từ 0
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
-// Function to apply locked logic for past timeslots
+// Logic khóa giờ quá khứ
 function applyLockedLogic(mapping, selectedDate, courts) {
-  const updatedMapping = JSON.parse(JSON.stringify(mapping));
-  const today = new Date();
-  const todayStr = getLocalDateString(today);
-  const currentHour = today.getHours();
-  const currentMinute = today.getMinutes();
+  const updatedMapping = JSON.parse(JSON.stringify(mapping));
+  const today = new Date();
+  const todayStr = getLocalDateString(today);
+  const currentHour = today.getHours();
+  const currentMinute = today.getMinutes();
 
-  courts.forEach((court) => {
-    const courtId = court._id;
-    const arr = updatedMapping[courtId] || Array(slotCount).fill("trống");
-    updatedMapping[courtId] = arr.map((slot, i) => {
-      const slotHour = times[i];
-      if (selectedDate === todayStr) {
-        if (slotHour < currentHour || (slotHour === currentHour && currentMinute > 0)) {
-          return "locked";
-        }
-      }
-      return slot; // Giữ nguyên đối tượng hoặc chuỗi gốc
-    });
-  });
-  return updatedMapping;
+  courts.forEach((court) => {
+    // Key của mapping là courtId
+    const courtId = court.courtId || court._id; 
+    
+    const arr = updatedMapping[courtId] || Array(slotCount).fill("trống");
+    updatedMapping[courtId] = arr.map((slot, i) => {
+      const slotHour = times[i];
+      if (selectedDate === todayStr) {
+        if (slotHour < currentHour || (slotHour === currentHour && currentMinute > 0)) {
+          return "locked";
+        }
+      }
+      return slot;
+    });
+  });
+  return updatedMapping;
 }
 
 const CourtStatusPage = () => {
-  const navigate = useNavigate();
-  // 💡 3. LẤY USER TỪ CONTEXT
-  const { admin, loading: authLoading } = useContext(AuthContext); 
+  const navigate = useNavigate();
+  const { admin, loading: authLoading } = useContext(AuthContext); 
 
-  const [tempSelectedDates, setTempSelectedDates] = useState([new Date()]);
-  const [displayDates, setDisplayDates] = useState([new Date()]);
-  const [centers, setCenters] = useState([]); 
-  const [courts, setCourts] = useState([]);
-  const [centerId, setCenterId] = useState(""); 
-  const [bookingData, setBookingData] = useState({});
-  const [error, setError] = useState(null);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [tempSelectedDates, setTempSelectedDates] = useState([new Date()]);
+  const [displayDates, setDisplayDates] = useState([new Date()]);
+  
+  // Danh sách trung tâm (Dropdown)
+  const [centersList, setCentersList] = useState([]); 
+  
+  // Chi tiết trung tâm & Sân
+  const [centerDetail, setCenterDetail] = useState(null);
+  const [courts, setCourts] = useState([]); 
+  
+  const [centerId, setCenterId] = useState(""); 
+  const [bookingData, setBookingData] = useState({});
+  const [error, setError] = useState(null);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isLoadingCourts, setIsLoadingCourts] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 💡 4. LOGIC MỚI: LẤY TRUNG TÂM DỰA TRÊN VAI TRÒ (ROLE)
-  useEffect(() => {
-    const fetchCenters = async () => {
-      // Chờ cho đến khi 'admin' được tải xong (authLoading === false)
-      if (authLoading || !admin) return; 
+  // 1. KHỞI TẠO: LẤY LIST CENTER
+  useEffect(() => {
+    const initData = async () => {
+      if (authLoading || !admin) return; 
 
-      try {
-        // SỬ DỤNG HẰNG SỐ ROLES
-        if (admin.role === ROLES.SUPER_ADMIN) {
-          // --- Logic cho SUPER_ADMIN ---
-          console.log("Là SUPER_ADMIN, đang lấy tất cả trung tâm...");
-          const centersData = await getAllCenters();
-          console.log("Fetched centers:", centersData);
-          setCenters(centersData);
-          if (centersData.length > 0) {
-            // Mặc định chọn trung tâm đầu tiên
-            setCenterId(centersData[0]._id);
-          }
-        // SỬ DỤNG HẰNG SỐ ROLES
-        } else if (admin.role === ROLES.CENTER_MANAGER) {
-          // --- Logic cho CENTER_MANAGER ---
-          if (!admin.managedCenterId) {
-            console.error("Lỗi: CENTER_MANAGER này không được gán trung tâm nào.");
-            setError("Tài khoản của bạn chưa được gán trung tâm quản lý.");
-            return;
-          }
-          console.log(`Là CENTER_MANAGER, tự động đặt centerId thành: ${admin.managedCenterId}`);
-          // Tự động đặt centerId, không cần fetch, không cần hiển thị bộ lọc
-          setCenterId(admin.managedCenterId);
-          // (Chúng ta không cần setCenters() vì bộ lọc sẽ bị ẩn)
-        }
-      } catch (error) {
-        console.error("Lỗi khi lấy danh sách trung tâm:", error);
-        setError("Không thể lấy danh sách trung tâm");
-      }
-    };
+      try {
+        if (admin.role === ROLES.SUPER_ADMIN) {
+          const data = await getAllCentersGQL();
+          setCentersList(data);
+          
+          if (data.length > 0 && !centerId) {
+            setCenterId(data[0].centerId);
+          }
+        } else if (admin.role === ROLES.CENTER_MANAGER) {
+          if (!admin.managedCenterId) {
+            setError("Tài khoản Manager chưa được gán trung tâm.");
+            return;
+          }
+          setCenterId(admin.managedCenterId);
+        }
+      } catch (err) {
+        console.error("Error init data:", err);
+        setError("Không thể khởi tạo dữ liệu.");
+      }
+    };
+    initData();
+  }, [admin, authLoading]); 
 
-    fetchCenters();
-  }, [admin, authLoading]); 
+  // 2. LẤY CHI TIẾT SÂN
+  useEffect(() => {
+    const fetchCenterDetail = async () => {
+      if (!centerId) return;
 
-  
-  useEffect(() => {
-    const fetchCourts = async () => {
-      if (!centerId) {
-        setCourts([]);
-        return;
-      }
+      setIsLoadingCourts(true);
+      try {
+        const detail = await getCenterInfoByIdGQL(centerId);
+        if (detail) {
+          setCenterDetail(detail);
+          if (detail.courts && Array.isArray(detail.courts)) {
+            const activeCourts = detail.courts.filter(c => c.isActive !== false);
+            setCourts(activeCourts);
+          } else {
+            setCourts([]);
+          }
+        }
+      } catch (err) {
+        console.error("Lỗi lấy chi tiết sân:", err);
+        setError("Không thể lấy thông tin sân.");
+        setCourts([]);
+      } finally {
+        setIsLoadingCourts(false);
+      }
+    };
 
-      try {
-        const courtsData = await getCourtsByCenter(centerId);
-        console.log("Fetched courts for centerId", centerId, ":", courtsData);
-        setCourts(courtsData);
-      } catch (error) {
-        console.error("Lỗi khi lấy danh sách sân:", error);
-        setError("Không thể lấy danh sách sân");
-        setCourts([]);
-      }
-    };
+    fetchCenterDetail();
+  }, [centerId]);
 
-    fetchCourts();
-  }, [centerId]);
+  // 3. 💡 HÀM FETCH DỮ LIỆU BOOKING (Dùng chung cho Polling)
+  const fetchBookingStatus = useCallback(async () => {
+    if (!centerId || courts.length === 0 || displayDates.length === 0) return;
 
-  useEffect(() => {
-    if (centerId) {
-      const dateStrings = displayDates.map(date => getLocalDateString(date));
-      socket.emit("adminSelectedDates", { centerId, dates: dateStrings });
-    }
-  }, [displayDates, centerId]);
+    // Chỉ hiện loading spinner nhỏ khi refresh thủ công, không hiện khi auto-polling
+    // setIsRefreshing(true); 
 
-  useEffect(() => {
-    const fetchBookingData = async () => {
-      if (!centerId || courts.length === 0) return;
+    const newBookingData = {};
+    
+    // Dùng Promise.all để fetch song song cho nhanh nếu chọn nhiều ngày
+    try {
+      const promises = displayDates.map(async (date) => {
+        const dateStr = getLocalDateString(date);
+        try {
+          // Gọi API REST
+          const mapping = await getPendingMapping(centerId, dateStr);
+          
+          const completeMapping = {};
+          courts.forEach((court) => {
+            const cId = court.courtId || court._id;
+            completeMapping[cId] = mapping[cId] || Array(slotCount).fill("trống");
+          });
 
-      const newBookingData = {};
-      for (const date of displayDates) {
-        const dateStr = getLocalDateString(date);
-        console.log(`Fetching booking data for date: ${dateStr}`);
-        try {
-          const mapping = await fetchFullMapping(centerId, dateStr);
-          console.log(`Raw fetched booking data for ${dateStr}:`, mapping);
+          return { 
+            dateStr, 
+            data: applyLockedLogic(completeMapping, dateStr, courts) 
+          };
+        } catch (err) {
+          console.error(`Error fetching for ${dateStr}:`, err);
+          return null;
+        }
+      });
 
-          const completeMapping = {};
-          courts.forEach((court) => {
-            completeMapping[court._id] = mapping[court._id] || Array(slotCount).fill("trống");
-          });
+      const results = await Promise.all(promises);
+      
+      results.forEach(res => {
+        if (res) {
+          newBookingData[res.dateStr] = res.data;
+        }
+      });
 
-          const finalMapping = applyLockedLogic(completeMapping, dateStr, courts);
-          console.log(`Final mapping for ${dateStr}:`, finalMapping);
-          newBookingData[dateStr] = finalMapping;
-          setError(null);
-        } catch (error) {
-          console.error(`Error fetching booking data for ${dateStr}:`, error);
-          setError(`Không thể lấy dữ liệu cho ngày ${dateStr}: ${error.message}`);
-        }
-      }
-      setBookingData(newBookingData);
-    };
+      setBookingData(newBookingData);
+      setError(null);
+    } catch (err) {
+      console.error("General fetch error:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [centerId, courts, displayDates]);
 
-    if (displayDates.length > 0) {
-      fetchBookingData();
-    } else {
-      setBookingData({});
-    }
-  }, [displayDates, centerId, courts]);
 
-  // WebSocket listener để xử lý updateBookings cho nhiều ngày
-  useEffect(() => {
-    const handleUpdateBookings = async (data) => {
-      if (!data || typeof data !== "object") {
-        console.error("Dữ liệu WebSocket không hợp lệ:", data);
-        return;
-      }
+  // 4. 💡 CƠ CHẾ POLLING (Thay thế Socket)
+  useEffect(() => {
+    // Fetch lần đầu ngay khi đủ điều kiện
+    if (courts.length > 0 && displayDates.length > 0) {
+      fetchBookingStatus();
+    }
 
-      console.log("Received WebSocket update:", data);
+    // Thiết lập Interval 30 giây
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible' && courts.length > 0) {
+         console.log("Auto-polling booking status...");
+         fetchBookingStatus();
+      }
+    }, 30000); 
 
-      // Danh sách các ngày cần cập nhật
-      const dateStrings = displayDates.map(date => getLocalDateString(date));
-      const newBookingData = { ...bookingData };
+    // Handle khi quay lại tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && courts.length > 0) {
+        console.log("Tab visible, fetching status...");
+        fetchBookingStatus();
+      }
+    };
+    
+    // Handle khi focus vào window
+    const handleWindowFocus = () => {
+        if (courts.length > 0) {
+          console.log("Window focused, fetching status...");
+          fetchBookingStatus();
+        }
+    };
 
-      // Cập nhật dữ liệu từ WebSocket cho các ngày có trong data
-      Object.keys(data).forEach((date) => {
-        if (dateStrings.includes(date)) {
-          const mapping = data[date];
-          if (!mapping || typeof mapping !== "object") {
-            console.error(`Dữ liệu không hợp lệ cho ngày ${date}:`, mapping);
-            return;
-          }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
 
-          const completeMapping = {};
-          courts.forEach((court) => {
-            completeMapping[court._id] = mapping[court._id] || Array(slotCount).fill("trống");
-          });
-          const finalMapping = applyLockedLogic(completeMapping, date, courts);
-          newBookingData[date] = finalMapping;
-          console.log(`Updated booking data for ${date} from WebSocket:`, finalMapping);
-        }
-      });
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [fetchBookingStatus, courts.length, displayDates.length]);
 
-      // Kiểm tra xem có ngày nào trong displayDates bị thiếu dữ liệu không
-      const missingDates = dateStrings.filter(date => !data[date]);
-      if (missingDates.length > 0) {
-        console.log(`Missing data for dates: ${missingDates.join(", ")}. Fetching from API...`);
-        for (const date of missingDates) {
-          try {
-            const mapping = await fetchFullMapping(centerId, date);
-            const completeMapping = {};
-            courts.forEach((court) => {
-              completeMapping[court._id] = mapping[court._id] || Array(slotCount).fill("trống");
-            });
-            const finalMapping = applyLockedLogic(completeMapping, date, courts);
-            newBookingData[date] = finalMapping;
-            console.log(`Fetched and updated booking data for ${date} from API:`, finalMapping);
-          } catch (error) {
-            console.error(`Error fetching booking data for ${date} from API:`, error);
-            setError(`Không thể lấy dữ liệu cho ngày ${date}: ${error.message}`);
-          }
-        }
-      }
 
-      setBookingData(newBookingData);
-    };
+  // --- HANDLERS ---
+  const handleDateChange = (dates) => {
+    if (dates.length <= 7) {
+      setTempSelectedDates(dates);
+    } else {
+      alert("Bạn chỉ có thể chọn tối đa 7 ngày!");
+      setTempSelectedDates(dates.slice(0, 7));
+    }
+  };
 
-    socket.on("updateBookings", handleUpdateBookings);
+  const handleOkayClick = (e) => {
+    e.stopPropagation();
+    if (tempSelectedDates.length > 0) {
+      const sorted = [...tempSelectedDates].sort((a, b) => a - b);
+      setDisplayDates(sorted);
+      setIsCalendarOpen(false);
+    } else {
+      setDisplayDates([]);
+      setIsCalendarOpen(false);
+    }
+  };
 
-    return () => {
-      socket.off("updateBookings", handleUpdateBookings);
-    };
-  }, [displayDates, courts, centerId, bookingData]);
+  const handleCenterChange = (e) => {
+    if (admin && admin.role === ROLES.SUPER_ADMIN) {
+      setCenterId(e.target.value);
+      setBookingData({});
+      setTempSelectedDates([new Date()]);
+      setDisplayDates([new Date()]);
+    }
+  };
 
-  const handleDateChange = (dates) => {
-    console.log("Selected dates from DatePicker:", dates);
-    if (dates.length <= 7) {
-      setTempSelectedDates(dates);
-    } else {
-      alert("Bạn chỉ có thể chọn tối đa 7 ngày!");
-      setTempSelectedDates(dates.slice(0, 7));
-    }
-  };
+  const handleRefreshClick = () => {
+    setIsRefreshing(true);
+    fetchBookingStatus();
+  }
 
-  const handleOkayClick = (e) => {
-    e.stopPropagation();
-    if (tempSelectedDates.length > 0) {
-      const sortedDates = [...tempSelectedDates].sort((a, b) => a - b);
-      console.log("Dates after clicking Okay:", sortedDates);
-      setDisplayDates(sortedDates);
-      setIsCalendarOpen(false);
-    } else {
-      setDisplayDates([]);
-      setIsCalendarOpen(false);
-    }
-  };
+  const dateTables = useMemo(() => {
+    return displayDates.map((date) => {
+      const dateStr = getLocalDateString(date);
+      return (
+        <div key={dateStr} className="mb-4 bg-green-100 p-0 rounded-md border border-gray-300">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-0">
+            <div className="w-full sm:w-40 text-x font-medium text-black px-2">
+              {`${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`}
+            </div>
+            <div className="w-full">
+              {isLoadingCourts ? (
+                 <div className="p-4 text-center text-gray-500">Đang tải danh sách sân...</div>
+              ) : courts.length > 0 ? (
+                <BookingTable
+                  courts={courts}
+                  bookingData={bookingData[dateStr] || {}}
+                  toggleBookingStatus={() => {}} // Admin chỉ view, không book trực tiếp ở đây (hoặc update logic nếu cần)
+                  times={times}
+                  slotCount={slotCount}
+                  currentUserId={null}
+                />
+              ) : (
+                <p className="text-gray-600 text-sm p-2">Không có sân nào.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    });
+  }, [displayDates, bookingData, courts, isLoadingCourts]);
 
-  const handleCloseClick = (e) => {
-    e.stopPropagation();
-    setIsCalendarOpen(false);
-  };
+  if (authLoading || !admin) {
+    return <div className="min-h-screen flex justify-center items-center bg-green-800"><LoadingSpinner /></div>;
+  }
 
-  const handleClickOutside = () => {
-    if (tempSelectedDates.length > 0) {
-      const sortedDates = [...tempSelectedDates].sort((a, b) => a - b);
-      console.log("Dates after clicking outside:", sortedDates);
-      setDisplayDates(sortedDates);
-    } else {
-      setDisplayDates([]);
-    }
-    setIsCalendarOpen(false);
-  };
+  return (
+    <div className="bg-green-800 font-inter min-h-screen">
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');`}</style>
 
-  // 💡 5. SỬA LẠI handleCenterChange (SỬ DỤNG HẰNG SỐ ROLES)
-  const handleCenterChange = (e) => {
-    // Chỉ SUPER_ADMIN mới có thể gọi hàm này
-    if (admin && admin.role === ROLES.SUPER_ADMIN) {
-      setCenterId(e.target.value);
-      setBookingData({});
-      setTempSelectedDates([new Date()]);
-      setDisplayDates([new Date()]);
-      setIsCalendarOpen(false);
-    }
-  };
+      <div className="w-full py-4">
+        {/* HEADER */}
+        <div className="flex justify-between items-center px-4 mb-4">
+          <button onClick={() => navigate(-1)} className="text-white hover:text-gray-300">
+            <FaArrowLeft className="text-2xl" />
+          </button>
+          <h1 className="text-2xl font-bold text-white">
+             {centerDetail ? centerDetail.name : "Trạng thái sân"}
+          </h1>
+          <div className="w-6"></div>
+        </div>
 
-  const handleBackClick = () => {
-    navigate(-1);
-  };
+        {/* CONTROLS */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 px-4">
+          
+          {/* Dropdown Trung Tâm (Chỉ SuperAdmin) */}
+          {admin.role === ROLES.SUPER_ADMIN && (
+            <div className="flex items-center">
+              <label className="mr-2 font-semibold text-white">Trung tâm:</label>
+              <div className="relative border border-gray-300 rounded-md bg-white">
+                <FaHome className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600" />
+                <select
+                  value={centerId}
+                  onChange={handleCenterChange}
+                  className="border-0 p-2 pl-8 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium text-gray-800 w-full"
+                  disabled={centersList.length === 0}
+                >
+                  {centersList.length === 0 ? (
+                    <option value="">Không có trung tâm</option>
+                  ) : (
+                    centersList.map((c) => (
+                      <option key={c.centerId} value={c.centerId}>{c.name}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+            </div>
+          )}
 
-  const formatDisplayDate = (date) => {
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    const days = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
-    const dayOfWeek = days[date.getDay()];
-    return `${dayOfWeek}, ${day}/${month}/${year}`;
-  };
+          {/* Chọn ngày */}
+          <div className="flex flex-col">
+            <div className="flex items-center">
+              <label className="mr-2 font-semibold text-white">Ngày:</label>
+              <div
+                className="relative border border-gray-300 rounded-md bg-white cursor-pointer h-10 w-48"
+                onClick={() => setIsCalendarOpen(true)}
+              >
+                <FaCalendarAlt className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600 z-10" />
+                <DatePicker
+                  onChange={handleDateChange}
+                  selectsMultiple
+                  selectedDates={tempSelectedDates}
+                  minDate={new Date()}
+                  dateFormat="dd/MM/yyyy"
+                  className="border-0 p-2 pl-8 rounded-md focus:outline-none w-full h-full text-sm font-medium"
+                  placeholderText="Chọn ngày"
+                  popperPlacement="bottom-end"
+                  open={isCalendarOpen}
+                  onClickOutside={() => {
+                    handleOkayClick({ stopPropagation: () => {} });
+                  }}
+                >
+                  <div className="p-2 flex justify-end gap-2">
+                    <button onClick={handleOkayClick} className="bg-green-500 text-white px-3 py-1 rounded text-sm font-medium">OK</button>
+                    <button onClick={(e) => { e.stopPropagation(); setIsCalendarOpen(false); }} className="bg-gray-500 text-white px-3 py-1 rounded text-sm font-medium">Đóng</button>
+                  </div>
+                </DatePicker>
+              </div>
+            </div>
+          </div>
+          
+          {/* Nút Refresh thủ công */}
+          <button 
+             onClick={handleRefreshClick} 
+             className="text-white hover:text-green-300 transition-colors p-2"
+             title="Làm mới dữ liệu"
+          >
+             <FaSyncAlt className={isRefreshing ? "animate-spin text-xl" : "text-xl"} />
+          </button>
 
-  const dateTables = useMemo(() => {
-    return displayDates.map((date) => {
-      const dateStr = getLocalDateString(date);
-      return (
-        <div
-          key={dateStr}
-          className="mb-4 bg-green-100 p-0 rounded-md border border-gray-300"
-        >
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-0">
-            <div className="w-full sm:w-40 text-x font-medium text-black">
-              {formatDisplayDate(date)}
-            </div>
-            <div className="w-full">
-              {courts.length > 0 ? (
-                <BookingTable
-                  courts={courts}
-                  bookingData={bookingData[dateStr] || {}}
-                  toggleBookingStatus={() => {}}
-                  times={times}
-                  slotCount={slotCount}
-                  currentUserId={null}
-                />
-              ) : (
-                <p className="text-gray-600 text-sm">Không có sân nào để hiển thị.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    });
-  }, [displayDates, bookingData, courts]);
+          <div className="text-white"><Legend /></div>
+        </div>
+      </div>
 
-  // 💡 6. RENDER CÓ ĐIỀU KIỆN
-  // (Nếu đang tải 'admin', chúng ta hiển thị màn hình chờ)
-  if (authLoading || !admin) {
-    return (
-      <div className="bg-green-800 font-inter min-h-screen flex items-center justify-center">
-        <p className="text-white text-lg">Đang tải dữ liệu người dùng...</p>
-      </div>
-    );
-  }
+      {error && <div className="mx-4 mb-4 p-2 bg-red-100 text-red-700 rounded text-sm">{error}</div>}
 
-  return (
-    <div className="bg-green-800 font-inter min-h-screen">
-      <style>
-        {`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');`}
-      </style>
-
-      <div className="w-full py-4">
-        <div className="flex justify-between items-center px-4 mb-4">
-          <button onClick={handleBackClick} className="text-white hover:text-gray-300">
-            <FaArrowLeft className="text-2xl" />
-          </button>
-          <h1 className="text-2xl font-bold text-white">Trạng thái sân</h1>
-          <div className="w-6"></div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 px-4">
-          
-          {/* 💡 7. BỘ LỌC CHỈ DÀNH CHO SUPER ADMIN (SỬ DỤNG HẰNG SỐ ROLES) */}
-          {admin.role === ROLES.SUPER_ADMIN && (
-            <div className="flex items-center">
-              <label className="mr-2 font-semibold text-white">Trung tâm:</label>
-              <div className="relative border border-gray-300 rounded-md bg-white">
-                <FaHome className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600" />
-                <select
-                  value={centerId}
-                  onChange={handleCenterChange}
-                  className="border-0 p-2 pl-8 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium text-gray-800 w-full"
-                  disabled={centers.length === 0}
-                >
-                  {centers.length === 0 ? (
-                    <option value="">Không có trung tâm nào</option>
-                  ) : (
-                    centers.map((center) => (
-                      <option key={center._id} value={center._id}>
-                        {center.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-col">
-            <div className="flex items-center">
-              <label className="mr-2 font-semibold text-white">Chọn ngày:</label>
-              <div
-                className="relative border border-gray-300 rounded-md bg-white cursor-pointer h-10"
-                onClick={() => setIsCalendarOpen(true)}
-              >
-                <FaCalendarAlt className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600 z-10" />
-                <DatePicker
-                  onChange={handleDateChange}
-                  selectsMultiple
-                  selectedDates={tempSelectedDates}
-                  minDate={new Date()}
-                  dateFormat="dd/MM/yyyy"
-                  className="border-0 p-2 pl-8 rounded-md focus:outline-none focus:ring-0 text-sm font-medium text-gray-800 pointer-events-none w-full h-full"
-                  placeholderText="Chọn ngày (tối đa 7 ngày)"
-                  popperPlacement="bottom-end"
-                  open={isCalendarOpen}
-                  onClickOutside={handleClickOutside}
-                >
-                  <div className="p-2 flex justify-end gap-2 pointer-events-auto">
-                    <button
-                      onClick={handleOkayClick}
-                      className="bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600 text-sm font-medium"
-                    >
-                      Okay
-                    </button>
-                    <button
-                      onClick={handleCloseClick}
-                      className="bg-gray-500 text-white px-4 py-1 rounded hover:bg-gray-600 text-sm font-medium"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </DatePicker>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center text-white">
-            <Legend />
-          </div>
-        </div>
-      </div>
-
-      {error && (
-        <div className="mx-4 mb-4 p-2 bg-red-100 text-red-700 rounded text-sm font-medium">
-          {error}
-        </div>
-      )}
-
-      {displayDates.length === 0 ? (
-       <p className="text-gray-200 text-sm font-medium px-4">Không có ngày nào được chọn.</p>
-      ) : (
-        <div className="px-4">{dateTables}</div>
-      )}
-    </div>
-  );
+      <div className="px-4">
+        {displayDates.length === 0 ? <p className="text-gray-200 text-sm">Chưa chọn ngày.</p> : dateTables}
+      </div>
+    </div>
+  );
 };
 
 export default CourtStatusPage;

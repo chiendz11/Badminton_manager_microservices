@@ -15,10 +15,6 @@ const Legend = () => (
       <span>Pending</span>
     </div>
     <div className="flex items-center">
-      <div className="w-4 h-4 bg-[#0288D1] mr-1"></div>
-      <span>Đang xử lý</span>
-    </div>
-    <div className="flex items-center">
       <div className="w-4 h-4 bg-green-500 mr-1"></div>
       <span>Đặt của bạn</span>
     </div>

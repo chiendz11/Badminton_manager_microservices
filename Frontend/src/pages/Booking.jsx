@@ -139,8 +139,6 @@ function applyDisplayLogic(serverMapping, selectedSlots, selectedDate, currentUs
 
         if (status.status === "paid" || status.status === "đã đặt") {
           return { ...status, status: "paid" };
-        } else if (status.status === "processing" || status.status === "chờ xử lý") {
-          return isMe ? { ...status, status: "myProcessing" } : { ...status, status: "processing" };
         } else if (status.status === "pending") {
           return isMe ? { ...status, status: "myPending" } : { ...status, status: "pending" };
         } else if (status.status === "myPending") {
@@ -413,6 +411,8 @@ const BookingSchedule = () => {
           const slotGroups = groupSelectedSlots(selectedSlots, courts); 
           // Cần đảm bảo bạn có hàm groupSelectedSlots được define ở ngoài hoặc import vào
           localStorage.setItem("slotGroups", JSON.stringify(slotGroups));
+
+
 
           alert(`Giữ chỗ thành công! Mã đơn: ${booking._id}`);
           navigate("/payment");

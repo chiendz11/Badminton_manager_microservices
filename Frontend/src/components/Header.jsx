@@ -9,22 +9,16 @@ const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [redirectAfterLogin, setRedirectAfterLogin] = useState(null); // Lưu trữ trang đích
+  const [redirectAfterLogin, setRedirectAfterLogin] = useState(null);
 
   const { user, logout, loading } = useContext(AuthContext);
   const navigate = useNavigate();
   const DEFAULT_AVATAR_URL = "https://res.cloudinary.com/dm4uxmmtg/image/upload/v1762859721/badminton_app/avatars/default_user_avatar.png";
 
-  // --- Logic xử lý Avatar ---
-
-  // Backend (UserService) luôn trả về URL đầy đủ (Cloudinary URL).
-  // 💡 SỬA LOGIC HIỂN THỊ:
   const getAvatarImagePath = (path) => {
-    // Nếu path có giá trị (khác null/undefined/empty) -> Dùng path
     if (path && path.trim() !== "") {
         return path; 
     }
-    // Nếu path là null -> Trả về ảnh mặc định
     return DEFAULT_AVATAR_URL;
   };
 
@@ -42,7 +36,7 @@ const Header = () => {
 
   const openLoginModal = (e, redirectPath = null) => {
     e.preventDefault();
-    setRedirectAfterLogin(redirectPath); // Lưu trữ trang đích
+    setRedirectAfterLogin(redirectPath);
     setIsLoginModalOpen(true);
     closeMenu();
   };
@@ -54,6 +48,12 @@ const Header = () => {
     closeMenu();
   };
 
+  // Class chung cho các Link để code gọn hơn
+  // whitespace-nowrap: Chống xuống dòng
+  // px-3 py-2: Tăng vùng bấm
+  // font-medium: Chữ đậm vừa phải cho đẹp
+  const navLinkClass = "hover:text-yellow-300 transition-colors whitespace-nowrap font-medium px-2 py-2 block";
+
   if (loading) {
     return <div>Đang tải...</div>;
   }
@@ -62,7 +62,8 @@ const Header = () => {
     <>
       <header className={isScrolled ? "scrolled" : ""}>
         <div className="container header-container flex items-center justify-between">
-          <Link to="/" className="logo">
+          {/* LOGO */}
+          <Link to="/" className="logo flex-shrink-0 mr-4"> {/* flex-shrink-0 để logo không bị bóp méo */}
             <div className="logo-icon">
               <i className="fas fa-table-tennis"></i>
             </div>
@@ -70,17 +71,19 @@ const Header = () => {
           </Link>
 
           <div className="header-right flex items-center">
-            <div className="header-contact flex items-center">
-              <div className="contact-item flex items-center">
+            {/* CONTACT INFO (Ẩn trên mobile nếu cần, hiện tại giữ nguyên) */}
+            <div className="header-contact flex items-center mr-6 hidden lg:flex"> {/* Thêm hidden lg:flex nếu muốn ẩn trên màn nhỏ */}
+              <div className="contact-item flex items-center whitespace-nowrap">
                 <i className="fas fa-phone-alt"></i>
                 <span>1900 1809</span>
               </div>
-              <div className="contact-item flex items-center">
+              <div className="contact-item flex items-center whitespace-nowrap">
                 <i className="fas fa-envelope"></i>
                 <span>23021710@vnu.edu.vn</span>
               </div>
             </div>
 
+            {/* MOBILE TOGGLE */}
             <button
               className={`mobile-menu-toggle ${isMobileMenuOpen ? "active" : ""}`}
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -90,100 +93,86 @@ const Header = () => {
               <span></span>
             </button>
 
+            {/* NAVIGATION MENU */}
             <nav className={isMobileMenuOpen ? "active" : ""}>
-              <ul className="header-links flex items-center">
+              {/* Thêm gap-4 hoặc gap-6 để tạo khoảng cách đều giữa các mục */}
+              <ul className="header-links flex items-center gap-1 lg:gap-6"> 
                 <li>
-                  <Link
-                    to="/"
-                    onClick={closeMenu}
-                    className="hover:text-yellow-300 transition-colors"
-                  >
+                  <Link to="/" onClick={closeMenu} className={navLinkClass}>
                     Trang Chủ
                   </Link>
                 </li>
                 <li>
-                  <Link
-                    to="/centers"
-                    onClick={closeMenu}
-                    className="hover:text-yellow-300 transition-colors"
-                  >
+                  <Link to="/centers" onClick={closeMenu} className={navLinkClass}>
                     Đặt Sân
                   </Link>
                 </li>
+                
+                {/* --- MỤC PASS SÂN --- */}
                 <li>
-                  <Link
-                    to="/news"
-                    onClick={closeMenu}
-                    className="hover:text-yellow-300 transition-colors"
-                  >
+                  <Link to="/pass-court" onClick={closeMenu} className={navLinkClass}>
+                    Pass Sân
+                  </Link>
+                </li>
+                {/* ------------------- */}
+
+                <li>
+                  <Link to="/news" onClick={closeMenu} className={navLinkClass}>
                     Tin Tức
                   </Link>
                 </li>
                 <li>
-                  <Link
-                    to="/policy"
-                    onClick={closeMenu}
-                    className="hover:text-yellow-300 transition-colors"
-                  >
+                  <Link to="/policy" onClick={closeMenu} className={navLinkClass}>
                     Chính Sách
                   </Link>
                 </li>
                 <li>
                   {user ? (
-                    <Link
-                      to="/contact"
-                      onClick={closeMenu}
-                      className="hover:text-yellow-300 transition-colors"
-                    >
+                    <Link to="/contact" onClick={closeMenu} className={navLinkClass}>
                       Liên Hệ
                     </Link>
                   ) : (
-                    <a
-                      href="#login"
-                      onClick={(e) => openLoginModal(e, "/contact")} // Truyền trang đích
-                      className="hover:text-yellow-300 transition-colors"
-                    >
+                    <a href="#login" onClick={(e) => openLoginModal(e, "/contact")} className={navLinkClass}>
                       Liên Hệ
                     </a>
                   )}
                 </li>
+
+                {/* USER DROPDOWN / LOGIN BUTTON */}
                 {user ? (
-                  <li className="relative">
+                  <li className="relative ml-2">
                     <div className="relative inline-block group">
                       <button
                         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                        className="flex items-center border border-white text-white rounded-md px-3 py-1 hover:bg-white hover:bg-opacity-20 transition-colors cursor-pointer"
+                        className="flex items-center border border-white text-white rounded-md px-3 py-1 hover:bg-white hover:bg-opacity-20 transition-colors cursor-pointer whitespace-nowrap"
                       >
                         <img
                           src={getAvatarImagePath(user?.avatar_url)}
                           alt="Avatar"
-                          // Giữ các class cơ bản của Tailwind
-                          className="w-10 h-10 rounded object-cover mr-2"
-                          // 💡 SỬ DỤNG STYLE INLINE CHỈ VỚI BORDER ĐƠN
+                          className="w-8 h-8 rounded object-cover mr-2" // Giảm size avatar chút cho cân đối
                           style={{
-                            // Viền đơn 2px màu Vàng nhạt (phù hợp với màu hover/dropdown)
                             border: `2px solid #FCD34D`,
-                            transition: 'all 0.3s' // Giữ hiệu ứng chuyển đổi
+                            transition: 'all 0.3s'
                           }}
                           onError={(e) => {
-                            console.log("Lỗi tải ảnh trong Header:", user?.avatar_url);
                             e.target.onerror = null;
                             e.target.src = "/default-avatar.png";
                           }}
                         />
-                        <span className="text-lg">{user.name}</span>
-                        <i className="fas fa-chevron-down text-sm ml-1"></i>
+                        <span className="text-base font-medium max-w-[150px] truncate">{user.name}</span> {/* truncate tên nếu quá dài */}
+                        <i className="fas fa-chevron-down text-sm ml-2"></i>
                       </button>
+
                       {isDropdownOpen && (
-                        <div className="absolute right-0 mt-2 w-40 bg-yellow-400 rounded-md shadow-md z-10 transition-all duration-200 overflow-hidden">
+                        <div className="absolute right-0 mt-2 w-48 bg-yellow-400 rounded-md shadow-lg z-50 transition-all duration-200 overflow-hidden">
                           <button
                             onClick={() => {
                               setIsDropdownOpen(false);
                               navigate("/profile");
                             }}
-                            className="flex items-center gap-2 w-full px-4 py-2 text-left text-gray-700 text-sm hover:bg-yellow-300 transition-colors"
+                            className="flex items-center gap-3 w-full px-4 py-3 text-left text-gray-800 text-sm hover:bg-yellow-300 transition-colors font-medium"
                           >
-                            <i className="fas fa-user text-base"></i>
+                            <i className="fas fa-user text-lg"></i>
                             <span>Thông tin cá nhân</span>
                           </button>
                           <button
@@ -193,9 +182,9 @@ const Header = () => {
                               setIsDropdownOpen(false);
                               navigate("/");
                             }}
-                            className="flex items-center gap-2 w-full px-4 py-2 text-left text-gray-700 text-sm hover:bg-yellow-300 transition-colors"
+                            className="flex items-center gap-3 w-full px-4 py-3 text-left text-gray-800 text-sm hover:bg-yellow-300 transition-colors font-medium"
                           >
-                            <i className="fas fa-sign-out-alt text-base"></i>
+                            <i className="fas fa-sign-out-alt text-lg"></i>
                             <span>Đăng xuất</span>
                           </button>
                         </div>
@@ -203,13 +192,13 @@ const Header = () => {
                     </div>
                   </li>
                 ) : (
-                  <li className="login-btn">
+                  <li className="login-btn ml-2">
                     <a
                       href="#login"
                       onClick={(e) => openLoginModal(e)}
-                      className="hover:text-yellow-300 transition-colors"
+                      className="hover:text-yellow-300 transition-colors whitespace-nowrap font-medium px-3 py-2 border border-white rounded hover:bg-white hover:text-green-700"
                     >
-                      <i className="fas fa-user"></i> Đăng Nhập
+                      <i className="fas fa-user mr-1"></i> Đăng Nhập
                     </a>
                   </li>
                 )}
@@ -222,10 +211,10 @@ const Header = () => {
       <LoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
-        redirectAfterLogin={redirectAfterLogin} // Truyền prop redirectAfterLogin
+        redirectAfterLogin={redirectAfterLogin}
       />
     </>
   );
 };
 
-export default Header;
+export default Header;  

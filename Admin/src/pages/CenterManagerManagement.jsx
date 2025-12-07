@@ -308,9 +308,12 @@ function CenterManagerManagement() {
                                     {/* Header */}
                                     <div className="flex justify-between items-start mb-4">
                                         <div className="flex items-center gap-3">
-                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shadow-sm ${isBanned ? 'bg-gray-200 text-gray-500' : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white'}`}>
-                                                {manager.name ? manager.name.charAt(0).toUpperCase() : 'U'}
-                                            </div>
+                                            {/* Sửa kích thước ảnh ở đây */}
+                                            <img
+                                                src={manager.avatar_url || 'https://res.cloudinary.com/dm4uxmmtg/image/upload/v1762859721/badminton_app/avatars/default_user_avatar.png'}
+                                                alt={manager.name}
+                                                className="w-12 h-12 rounded-full object-cover border border-gray-200 shadow-sm shrink-0" 
+                                            />
                                             <div>
                                                 <h3 className={`font-bold text-gray-800 line-clamp-1 ${isBanned ? 'text-gray-500 line-through' : ''}`} title={manager.name}>
                                                     {manager.name}
@@ -325,9 +328,9 @@ function CenterManagerManagement() {
                                             onClick={(e) => handleToggleStatus(e, manager)}
                                             disabled={isProcessing}
                                             className={`p-2 rounded-full transition-colors z-10 ${isBanned
-                                                    ? 'bg-red-50 text-red-500 hover:bg-red-100'
-                                                    : 'bg-gray-50 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
-                                                } ${isProcessing ? 'cursor-not-allowed opacity-70' : ''}`}
+                                                ? 'bg-red-50 text-red-500 hover:bg-red-100'
+                                                : 'bg-gray-50 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                                            } ${isProcessing ? 'cursor-not-allowed opacity-70' : ''}`}
                                             title={isBanned ? "Mở khóa tài khoản" : "Khóa tài khoản"}
                                         >
                                             {isProcessing ? (
