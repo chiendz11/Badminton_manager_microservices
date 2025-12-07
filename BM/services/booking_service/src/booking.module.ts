@@ -11,13 +11,31 @@ import { PaymentController } from './Controller/payment.controller';
 import { CenterService } from './Service/center.service';
 import { PaymentService } from './Service/payment.service';
 import { Court, CourtSchema } from './Schema/court.schema';
+import { BullModule } from '@nestjs/bullmq';
+import { BookingProcessor } from './booking-expiration.processor';
 
 @Module({
   imports: [
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        connection: {
+          host: configService.get('REDIS_HOST') || 'redis',
+          port: configService.get('REDIS_PORT') || 6379,
+        },
+      }),
+      inject: [ConfigService],
+    }),
+
+    BullModule.registerQueue({
+      name: 'booking-expiration',
+    }),
+
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
     }),
+
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -41,6 +59,7 @@ import { Court, CourtSchema } from './Schema/court.schema';
     BookingService,
     CenterService,
     PaymentService,
+    BookingProcessor,
   ],
 })
 export class BookingModule {}
