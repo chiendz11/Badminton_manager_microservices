@@ -15,6 +15,7 @@ import { CreateBookingDTO } from '../DTO/create-booking.DTO';
 import { BookingStatus } from '../Schema/booking.schema';
 import { GatewayAuthGuard } from '../gateway-auth.guard';
 import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { GetHistoryDto } from 'src/DTO/get-history.DTO';  
 
 
 @Controller()
@@ -106,5 +107,14 @@ export class BookingController {
     const deleted = await this.bookingService.deleteBooking(id);
     if (!deleted) throw new NotFoundException('Booking not found');
     return { message: 'Booking deleted successfully', id };
+  }
+
+  @Get('/api/user/:userId/booking-history') 
+  async getUserBookingHistory(
+    @Param('userId') userId: string,
+    @Query() query: GetHistoryDto, // Hứng toàn bộ query params vào DTO
+  ) {
+    // Gọi sang Service với userId và object query đầy đủ
+    return this.bookingService.getUserBookingHistory(userId, query);
   }
 }

@@ -10,6 +10,7 @@ import { CenterController } from './Controller/center.controller';
 import { PaymentController } from './Controller/payment.controller';
 import { CenterService } from './Service/center.service';
 import { PaymentService } from './Service/payment.service';
+import { Court, CourtSchema } from './Schema/court.schema';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { PaymentService } from './Service/payment.service';
     MongooseModule.forFeature([{ name: Booking.name, schema: BookingSchema }]),
     MongooseModule.forFeature([{ name: Center.name, schema: CenterSchema }]),
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    MongooseModule.forFeature([{ name: Court.name, schema: CourtSchema }]),
 
   ],
   controllers: [

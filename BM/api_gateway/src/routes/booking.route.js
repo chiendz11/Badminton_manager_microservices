@@ -11,10 +11,16 @@ const router = Router();
 const bookingProxy = proxy(BOOKING_SERVICE_URL, {
     // 1. Path Resolver: Chuyển /api/booking/xyz -> /api/xyz (đến Booking Service)
     proxyReqPathResolver: (req) => {
-        // Loại bỏ prefix "/booking" để khớp với router bên Booking Service
-        // Ví dụ: Gateway nhận "/booking/pending/mapping" -> Gửi đi "/pending/mapping"
-        return req.originalUrl.replace("/booking", ""); 
-    },
+        let path = req.originalUrl;
+        // Ví dụ: "/api/booking/pending/mapping"
+
+        if (path.startsWith("/api/booking/")) {
+            // Giữ prefix /api/ và CHỈ xoá "booking/"
+            return "/api/" + path.slice("/api/booking/".length);
+        }
+
+        return path;  // không phải booking service → để nguyên
+    },  
 
     // 2. Decorator: Gắn thông tin User đã xác thực vào Header để Service con dùng
     proxyReqOptDecorator: (proxyReqOpts, req) => {
@@ -22,7 +28,7 @@ const bookingProxy = proxy(BOOKING_SERVICE_URL, {
             // Chuyển ID và Role sang header để Booking Service không cần verify token lại
             proxyReqOpts.headers['X-User-ID'] = req.user.id;
             proxyReqOpts.headers['X-User-Role'] = req.user.role;
-            
+
             // Nếu có thông tin name/phone từ token, cũng có thể bắn sang
             if (req.user.name) proxyReqOpts.headers['X-User-Name'] = req.user.name;
             if (req.user.phone) proxyReqOpts.headers['X-User-Phone'] = req.user.phone;
@@ -44,10 +50,10 @@ const bookingProxy = proxy(BOOKING_SERVICE_URL, {
 router.get("/booking/pending/mapping",
     authenticate,
     authorize([
-        GATEWAY_ROLES.USER, 
-        GATEWAY_ROLES.CENTER_MANAGER, 
+        GATEWAY_ROLES.USER,
+        GATEWAY_ROLES.CENTER_MANAGER,
         GATEWAY_ROLES.SUPER_ADMIN
-    ]), 
+    ]),
     bookingProxy
 );
 
@@ -78,6 +84,14 @@ router.post("/booking/payment/create-link",
     authorize([
         GATEWAY_ROLES.USER,
         GATEWAY_ROLES.CENTER_MANAGER
+    ]),
+    bookingProxy
+);
+
+router.get("/user/:userId/booking-history",
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.USER
     ]),
     bookingProxy
 );

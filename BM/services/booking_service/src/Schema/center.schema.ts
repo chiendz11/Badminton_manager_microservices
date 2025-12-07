@@ -11,6 +11,9 @@ export class Center {
 
   @Prop({ type: CenterPricingSchema, required: true })
   pricing: CenterPricing;
+
+  @Prop({type: String, required: true})
+  name: string;
 }
 
 export const CenterSchema = SchemaFactory.createForClass(Center);
