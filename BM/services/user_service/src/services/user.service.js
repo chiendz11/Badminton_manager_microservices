@@ -2,6 +2,8 @@ import { User } from '../models/user.model.js';
 import { StorageClient } from '../clients/storage.client.js'; // 💡 IMPORT API MỚI
 import { DEFAULT_AVATAR_FILE_ID } from '../configs/env.config.js';
 import { UserExtraService } from './user-extra.service.js';
+import { MeiliSearch } from 'meilisearch';
+import { publishToExchange } from '../clients/rabbitmq.client.js';
 
 
 const client = new MeiliSearch({
@@ -56,23 +58,41 @@ export const UserService = {
 
     // Tạo hồ sơ người dùng (profile) mới
     async createProfile(profileData) {
-        // ... (Giữ nguyên logic tạo profile)
         try {
             // 1. Tạo một đối tượng User mới từ Schema và dữ liệu được truyền vào.
             const newUser = new User(profileData);
+            
             // 2. Lưu vào MongoDB.
             await newUser.save();
-            await UserExtraService.initUserExtra(newUser.userId); // Tạo bản ghi UserExtra mặc định
+            await UserExtraService.initUserExtra(newUser.userId);
 
-            // 3. Trả về đối tượng profile đã lưu (dùng .lean() để chuyển về Plain JS Object)
+            // 3. Trả về đối tượng profile đã lưu
             const savedProfile = newUser.toObject();
 
             console.log(`[UserService] ✅ Tạo hồ sơ mới thành công cho userId: ${savedProfile.userId}`);
+
+            // 👇 4. GỬI MESSAGE TỚI RABBITMQ
+            // Booking Service cần userId và points (mặc định là 0)
+            const eventMessage = {
+                type: 'USER_CREATED',
+                payload: {
+                    userId: savedProfile.userId,
+                    points: savedProfile.points || 0,
+                    // Có thể gửi thêm name, avatar nếu Booking cần hiển thị
+                    name: savedProfile.name 
+                },
+                timestamp: new Date()
+            };
+
+            // Gọi hàm publish đã có sẵn trong rabbitmq.client.js
+            // Routing key để rỗng vì exchange là 'fanout'
+            await publishToExchange('', eventMessage);
+
             return savedProfile;
 
         } catch (error) {
             console.error(`[UserService] Lỗi khi tạo profile:`, error.message);
-            throw error; // Ném lỗi (ví dụ: 11000 Duplicate Key) để Controller xử lý.
+            throw error;
         }
     },
 
