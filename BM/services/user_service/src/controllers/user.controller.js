@@ -2,18 +2,48 @@ import { UserService } from '../services/user.service.js';
 
 export const UserController = {
 
-    async getUsersByKeyword(req, res) {
+    // Hàm gộp: Xử lý cả tìm kiếm (MeiliSearch) và lấy danh sách (DB)
+    async getUsers(req, res) {
         try {
-            if (!req.body.keyword) {
-                result = await UserService.findAllUsers({});
-                return res.status(200).json({ success: true, ...result });
+            // Lấy tất cả tham số từ URL Query (ví dụ: ?keyword=abc&page=1...)
+            const { 
+                keyword, // Dành cho tìm kiếm nâng cao (MeiliSearch)
+                page, limit, search, level, sort, order, role, isActive // Dành cho list thường (DB)
+            } = req.query;
+
+            // -----------------------------------------------------------
+            // TRƯỜNG HỢP 1: Có từ khóa 'keyword' -> Dùng MeiliSearch
+            // -----------------------------------------------------------
+            if (keyword) {
+                // Lưu ý: searchUsersByKeyword cần nhận string, không phải object
+                const users = await UserService.meiliFindUsersByKeywords(keyword);
+                
+                // Trả về kết quả tìm kiếm
+                return res.status(200).json({ 
+                    success: true, 
+                    data: users 
+                });
             }
-            const { keyword } = req.body.keyword;
-            const users = await UserService.searchUsersByKeyword(keyword);
-            res.status(200).json({ success: true, data: users });
+
+            // -----------------------------------------------------------
+            // TRƯỜNG HỢP 2: Không có 'keyword' -> Lấy danh sách từ DB (có phân trang/lọc)
+            // -----------------------------------------------------------
+            const result = await UserService.findAllUsers({
+                page, limit, search, level, sort, order, role, isActive
+            });
+
+            // Trả về danh sách phân trang
+            return res.status(200).json({ 
+                success: true, 
+                ...result 
+            });
+
         } catch (error) {
-            console.error("Error searching users by keyword:", error);
-            res.status(500).json({ success: false, message: "Internal Server Error." });
+            console.error("Error in getUsers:", error);
+            return res.status(500).json({ 
+                success: false, 
+                message: "Internal Server Error." 
+            });
         }
     },
     /**

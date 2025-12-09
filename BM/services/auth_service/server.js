@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 
 // 1. IMPORT HÀM KẾT NỐI TỪ PRISMA.JS
 import { connectAndLog } from "./src/prisma.js";
+import { initRabbitMQ } from "./src/clients/rabbitmq.client.js";
 
 const app = express();
 const AUTH_PORT = PORT; 
@@ -40,6 +41,7 @@ async function startServer() {
     try {
         // 3. CHỜ KẾT NỐI DATABASE THÀNH CÔNG TRƯỚC
         await connectAndLog();
+        await initRabbitMQ(); // Khởi tạo kết nối RabbitMQ
 
         // 4. SAU KHI DB SẴN SÀNG, MỚI BẮT ĐẦU LẮNG NGHE
         const server = app.listen(AUTH_PORT, () => {

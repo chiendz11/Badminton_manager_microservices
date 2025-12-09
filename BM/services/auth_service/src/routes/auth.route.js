@@ -65,5 +65,8 @@ authRouter.put(
     AuthController.adminResetPassword
 );
 
+authRouter.patch("/users/:userId/status", // Cập nhật trạng thái kích hoạt người dùng
+  AuthController.updateUserStatus); // Handler mới      
+
 
 export default authRouter;

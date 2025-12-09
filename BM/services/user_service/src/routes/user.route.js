@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer'; // 💡 IMPORT MULTER
 import { UserController } from '../controllers/user.controller.js'; 
-import { User } from '../models/user.model.js';
+
 
 const router = Router();
 
@@ -34,8 +34,10 @@ router.put(
     UserController.updateAvatar // Controller xử lý file
 ); 
 
-// 💡 [MỚI] GET / (Gateway: /api/users) - Admin tìm kiếm User theo từ khóa
-router.get('/', UserController.getUsersByKeyword);
+// 💡 [SỬA] Gộp chung logic: Nếu có ?keyword thì tìm kiếm, nếu không thì lấy danh sách (có phân trang)
+router.get('/', UserController.getUsers);
+
+
 
 // 💡 [MỚI] PATCH /:userId (Gateway: /api/users/:userId) - Admin sửa Profile User
 router.patch('/:userId', UserController.updateUserById);

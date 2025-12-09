@@ -11,6 +11,7 @@ import { TokenService } from './token.service.js'; // 💡 Cập nhật import
 import { LoginService } from './login.service.js'; // 💡 Cập nhật import
 import { isEmailFormat } from '../utils/validations.util.js';
 import { UserService } from '../clients/user.client.js'; // 💡 Cập nhật import
+import { publishToExchange } from '../clients/rabbitmq.client.js'; // 💡 Cập nhật import
 
 const SALT_ROUNDS = 10;
 
@@ -379,4 +380,40 @@ export const AuthService = {
         console.log(`[AuthService] ✅ Đặt lại mật khẩu thành công cho userId: ${publicUserId}`);
         // Không cần trả về gì nếu thành công.
     },
+
+    async updateUserStatus(userId, isActive) {
+        try {
+            // 1. Cập nhật trong DB PostgreSQL (Auth Service)
+            // Giả sử userId truyền vào là publicUserId (UUID)
+            const updatedUser = await prisma.user.update({
+                where: { publicUserId: userId }, // Hoặc { id: userId } tùy logic của bạn
+                data: { 
+                    isActive: isActive,
+                    // Nếu ban user, có thể cần xóa refresh token để logout ngay lập tức
+                    ...(isActive === false && {
+                        refreshTokens: { deleteMany: {} } 
+                    })
+                }
+            });
+
+            // 2. Bắn Event sang RabbitMQ
+            const eventPayload = {
+                payload: {
+                    userId: updatedUser.publicUserId, // Đảm bảo gửi ID đồng bộ giữa các service
+                    isActive: updatedUser.isActive
+                },
+                timestamp: new Date()
+            };
+
+            await publishToExchange('', eventPayload);
+
+            return updatedUser;
+        } catch (error) {
+            console.error("[AuthService] Error updating status:", error);
+            if (error.code === 'P2025') {
+                throw new Error("User not found");
+            }
+            throw error;
+        }
+    }
 };

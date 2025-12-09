@@ -61,7 +61,7 @@ export const UserService = {
         try {
             // 1. Tạo một đối tượng User mới từ Schema và dữ liệu được truyền vào.
             const newUser = new User(profileData);
-            
+
             // 2. Lưu vào MongoDB.
             await newUser.save();
             await UserExtraService.initUserExtra(newUser.userId);
@@ -79,7 +79,7 @@ export const UserService = {
                     userId: savedProfile.userId,
                     points: savedProfile.points || 0,
                     // Có thể gửi thêm name, avatar nếu Booking cần hiển thị
-                    name: savedProfile.name 
+                    name: savedProfile.name
                 },
                 timestamp: new Date()
             };
@@ -141,10 +141,10 @@ export const UserService = {
             // Chỉ cho phép Admin cập nhật các trường thông tin cá nhân tại đây.
             // Các trường Identity (email, username, role) phải được xử lý qua quy trình đồng bộ từ Auth Service.
             const allowedUpdates = {};
-            
+
             if (data.name) allowedUpdates.name = data.name.trim();
             if (data.phone_number) allowedUpdates.phone_number = data.phone_number.trim();
-            
+
             // (Mở rộng: Nếu sau này muốn cho Admin sửa avatar qua link/id trực tiếp)
             if (data.avatar_file_id) allowedUpdates.avatar_file_id = data.avatar_file_id;
             if (data.avatar_url) allowedUpdates.avatar_url = data.avatar_url;
@@ -298,6 +298,23 @@ export const UserService = {
             };
         } catch (error) {
             console.error(`[UserService] findAllUsers Error:`, error.message);
+            throw error;
+        }
+    },
+    async updateUserStatus(userId, isActive) {
+        try {
+            const cleanUserId = userId.trim();
+            const updatedUser = await User.findOneAndUpdate(
+                { userId: cleanUserId },
+                { $set: { isActive: isActive } },
+                { new: true }
+            ).select('-__v').lean();
+            if (!updatedUser) {
+                throw new Error("Không tìm thấy hồ sơ người dùng để cập nhật trạng thái.");
+            }
+            return updatedUser;
+        } catch (error) {
+            console.error(`[UserService] updateUserStatus Error:`, error.message);
             throw error;
         }
     }

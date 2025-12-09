@@ -339,4 +339,31 @@ export const AuthController = {
             });
         }
     },
+    updateUserStatus: async (req, res) => {
+        try {
+            const { userId } = req.params;
+            const { isActive } = req.body;
+
+            // Validate cơ bản
+            if (typeof isActive !== 'boolean') {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "isActive must be a boolean (true/false)" 
+                });
+            }
+
+            const result = await AuthService.updateUserStatus(userId, isActive);
+
+            res.status(200).json({
+                success: true,
+                message: `User status updated to ${isActive ? 'ACTIVE' : 'INACTIVE'}`,
+                data: result
+            });
+        } catch (error) {
+            res.status(500).json({ 
+                success: false, 
+                message: error.message || "Internal Server Error" 
+            });
+        }
+    }
 };

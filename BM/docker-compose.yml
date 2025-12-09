@@ -34,6 +34,9 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_OAUTH_REDIRECT_URL=${GOOGLE_OAUTH_REDIRECT_URL}
       - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
+
+      # Default Assets
+      - RABBITMQ_URL=amqp://guest:guest@my_rabbitmq:5672 
     env_file:
       - .env
     restart: always

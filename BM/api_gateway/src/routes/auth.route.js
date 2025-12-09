@@ -32,7 +32,7 @@ router.post("/admin/users",
   authorize([GATEWAY_ROLES.SUPER_ADMIN]), 
   authProxy);
 
-router.post("users/:userId/status", // Cập nhật trạng thái kích hoạt người dùng
+router.patch("/users/:userId/status", // Cập nhật trạng thái kích hoạt người dùng
   authenticate, // Yêu cầu đăng nhập
   // 💡 SỬA LỖI: Cập nhật mảng vai trò
   authorize([GATEWAY_ROLES.SUPER_ADMIN]), 
@@ -63,6 +63,7 @@ router.put("/users/:userId/password",
     authenticate, 
     authorize([GATEWAY_ROLES.SUPER_ADMIN]), // Phân quyền Admin
     authProxy);
+
 
 // ... (Các route Google không đổi) ...
 router.get("/auth/google/login", authProxy);
