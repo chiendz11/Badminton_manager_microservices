@@ -91,40 +91,28 @@ function UserManage() {
   
   // 💡 OPTIMISTIC UPDATE HANDLER (Logic quan trọng cho Eventual Consistency)
   const handleToggleStatus = async (user) => {
-    const newStatus = !user.isActive; 
-    const actionText = newStatus ? "MỞ KHÓA" : "KHÓA"; 
-    
-    if (!window.confirm(`Xác nhận ${actionText} tài khoản ${user.name}?\n\n(Người dùng sẽ bị ảnh hưởng ngay lập tức)`)) return;
+  const newStatus = !user.isActive; 
+  const actionText = newStatus ? "MỞ KHÓA" : "KHÓA"; 
+  
+  if (!window.confirm(`Xác nhận ${actionText} tài khoản ${user.name}?`)) return;
 
-    // 1. Lưu lại trạng thái cũ để rollback nếu lỗi
-    const previousCustomers = [...customers];
+  const previousCustomers = [...customers];
 
-    // 2. Cập nhật UI NGAY LẬP TỨC (Optimistic)
-    // Không chờ Server trả về, giả định là thành công để UI mượt
-    const updatedCustomers = customers.map(c => 
-        (c.userId === user.userId || c._id === user._id) 
-            ? { ...c, isActive: newStatus } 
-            : c
-    );
-    setCustomers(updatedCustomers);
+  const updatedCustomers = customers.map(c => 
+      (c.userId === user.userId || c._id === user._id) 
+          ? { ...c, isActive: newStatus } 
+          : c
+  );
+  setCustomers(updatedCustomers);
 
-    try {
-      // 3. Gọi API (Sang Auth Service -> Queue -> User Service)
-      await updateUserStatus(user.userId || user._id, newStatus);
-      
-      toast.success(`Đã ${actionText.toLowerCase()} thành công!`);
-      
-      // 💡 QUAN TRỌNG: KHÔNG gọi fetchUsersData() ở đây.
-      // Vì User Service có thể chưa kịp nhận tin nhắn từ Queue.
-      // Chúng ta tin tưởng vào Optimistic Update ở bước 2.
-
-    } catch (error) {
-      // 4. Nếu lỗi -> Rollback về trạng thái cũ
-      setCustomers(previousCustomers);
-      toast.error(`Lỗi: Không thể ${actionText.toLowerCase()} tài khoản.`);
-      console.error(error);
-    }
-  };
+  try {
+    await updateUserStatus(user.userId || user._id, newStatus);
+    toast.success(`Đã ${actionText.toLowerCase()} thành công!`);
+  } catch (error) {
+    setCustomers(previousCustomers);
+    toast.error(`Lỗi: Không thể ${actionText.toLowerCase()} tài khoản.`);
+  }
+};
 
   const getLevelIcon = (level) => {
     switch (level?.toLowerCase()) {

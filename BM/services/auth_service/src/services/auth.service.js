@@ -11,7 +11,7 @@ import { TokenService } from './token.service.js'; // 💡 Cập nhật import
 import { LoginService } from './login.service.js'; // 💡 Cập nhật import
 import { isEmailFormat } from '../utils/validations.util.js';
 import { UserService } from '../clients/user.client.js'; // 💡 Cập nhật import
-import { publishToExchange } from '../clients/rabbitmq.client.js'; // 💡 Cập nhật import
+import { publishToExchange, ROUTING_KEYS } from '../clients/rabbitmq.client.js'; // 💡 Cập nhật import
 
 const SALT_ROUNDS = 10;
 
@@ -405,7 +405,7 @@ export const AuthService = {
                 timestamp: new Date()
             };
 
-            await publishToExchange('', eventPayload);
+            await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventPayload);
 
             return updatedUser;
         } catch (error) {

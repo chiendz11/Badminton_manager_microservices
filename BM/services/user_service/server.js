@@ -10,7 +10,6 @@ import userInternalRouter from "./src/routes/user.internal.route.js";
 import { initRabbitMQ } from "./src/clients/rabbitmq.client.js";
 import { startUserServiceWorker } from './src/workers/user-service.worker.js';
 import { startMeiliSearchWorker } from "./src/workers/meili-search.worker.js";
-import { startUserProfileWorker } from "./src/workers/user-service.worker.js";
 
 
 const app = express();
@@ -27,7 +26,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 await initRabbitMQ(); // Khởi tạo kết nối RabbitMQ
 startMeiliSearchWorker(); // Khởi động MeiliSearch Worker
-startUserProfileWorker();
 startUserServiceWorker(); // Khởi động User Service Worker
 
 // Routes
