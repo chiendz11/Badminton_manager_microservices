@@ -2,6 +2,7 @@ import amqp from 'amqplib';
 import { MeiliSearch } from 'meilisearch';
 import consola from 'consola';
 import { UserService } from '../services/user.service.js';
+import { EXCHANGE_NAME as EXCHANGES } from '../clients/rabbitmq.client.js';
 
 const client = new MeiliSearch({
     host: process.env.MEILISEARCH_URL || 'http://my_meilisearch:7700',
@@ -9,7 +10,7 @@ const client = new MeiliSearch({
 })
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@my_rabbitmq:5672';
-const EXCHANGE_NAME = 'user_events_exchange';
+const EXCHANGE_NAME = EXCHANGES.USER_EXTRA_UPDATE_EVENT;
 const QUEUE_NAME = 'q_meilisearch_sync';
 
 export const startMeiliSearchWorker = async () => {

@@ -1,9 +1,10 @@
 import amqp from 'amqplib';
 import { UserExtraService } from '../services/user-extra.service.js';
 import consola from 'consola';
+import { EXCHANGE_NAME as EXCHANGES } from '../clients/rabbitmq.client.js';
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@my_rabbitmq:5672';
-const EXCHANGE_NAME = 'user_events_exchange';
+const EXCHANGE_NAME = EXCHANGES.USER_EXTRA_UPDATE_EVENT;
 const QUEUE_NAME = 'q_user_updates';
 
 export const startUserServiceWorker = async () => {
