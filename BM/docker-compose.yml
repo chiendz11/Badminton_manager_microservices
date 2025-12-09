@@ -83,9 +83,48 @@ services:
       # --- DEFAULT ASSETS ---
       - DEFAULT_AVATAR_FILE_ID=${DEFAULT_AVATAR_FILE_ID}
       - DEFAULT_AVATAR_URL=${DEFAULT_AVATAR_URL}
+      - RABBITMQ_URL=amqp://guest:guest@my_rabbitmq:5672
+      - MEILISEARCH_URL=http://my_meilisearch:7700
+      - MEILISEARCH_API_KEY=masterKey
     env_file:
       - .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  # 1. RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine # Bản management có giao diện web
+    container_name: my_rabbitmq
+    ports:
+      - "5672:5672"   # Port cho code kết nối
+      - "15672:15672" # Port cho giao diện Web (User/Pass mặc định: guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - microservice_network
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # 2. Meilisearch
+  meilisearch:
+    image: getmeili/meilisearch:v1.10
+    container_name: my_meilisearch
+    ports:
+      - "7700:7700"
+    environment:
+      - MEILI_MASTER_KEY=masterKey123 # Key để bảo mật, bắt buộc phải có
+    volumes:
+      - ./meili_data:/meili_data
     networks:
       - microservice_network
     logging: *default-logging

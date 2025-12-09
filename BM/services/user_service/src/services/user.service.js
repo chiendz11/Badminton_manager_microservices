@@ -1,8 +1,27 @@
 import { User } from '../models/user.model.js';
 import { StorageClient } from '../clients/storage.client.js'; // 💡 IMPORT API MỚI
 import { DEFAULT_AVATAR_FILE_ID } from '../configs/env.config.js';
+import { UserExtraService } from './user-extra.service.js';
+
+
+const client = new MeiliSearch({
+    host: process.env.MEILISEARCH_URL || 'http://my_meilisearch:7700',
+    apiKey: 'masterKey123'
+})
 
 export const UserService = {
+
+    async meiliFindUsersByKeywords(keywords) {
+        try {
+            const index = client.index('users');
+            const result = await index.search(keywords)
+            return result.hits;
+        } catch (error) {
+            console.error("MeiliSearch findUsersByKeywords Error:", error);
+            throw error;
+        }
+    },
+
     // Tìm người dùng theo userId (UUID)
     async findUserById(userId) {
         // ... (Giữ nguyên logic findUserById)
@@ -43,6 +62,7 @@ export const UserService = {
             const newUser = new User(profileData);
             // 2. Lưu vào MongoDB.
             await newUser.save();
+            await UserExtraService.initUserExtra(newUser.userId); // Tạo bản ghi UserExtra mặc định
 
             // 3. Trả về đối tượng profile đã lưu (dùng .lean() để chuyển về Plain JS Object)
             const savedProfile = newUser.toObject();

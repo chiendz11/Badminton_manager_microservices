@@ -11,12 +11,15 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "amqplib": "^0.10.9",
     "axios": "^1.13.2",
+    "consola": "^3.4.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "form-data": "^4.0.4",
     "helmet": "^8.1.0",
     "joi": "^18.0.1",
+    "meilisearch": "^0.54.0",
     "mongoose": "^8.19.1",
     "multer": "^2.0.2"
   }

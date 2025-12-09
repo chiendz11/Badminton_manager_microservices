@@ -229,7 +229,7 @@ export const AuthController = {
                 return res.status(400).json({ message: "Mật khẩu cũ không chính xác." });
             }
             if (error.message === 'USER_NOT_FOUND') {
-                 return res.status(404).json({ message: "Không tìm thấy người dùng." });
+                 return res.status(404).json({ message: "[Change Password] Không tìm thấy người dùng." });
             }
             next(error);
         }
@@ -326,7 +326,7 @@ export const AuthController = {
             console.error("[AuthController] Lỗi khi Admin đặt lại mật khẩu:", error);
             
             if (error.message === 'USER_NOT_FOUND') {
-                return res.status(404).json({ message: "Không tìm thấy người dùng." });
+                return res.status(404).json({ message: "[Auth Service. admin Reset Password] Không tìm thấy người dùng." });
             }
             
             // Xử lý lỗi validation (nếu bạn dùng validation middleware ở Auth Service)

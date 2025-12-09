@@ -1,4 +1,5 @@
 import api from '../../../config/axiosConfig'; // (Giả sử bạn import axios instance là 'api')
+import axiosInstance from '../../../config/axiosConfig';
 
 /**
  * Lấy thông tin hồ sơ của người dùng (profile) hiện tại đã đăng nhập.
@@ -13,6 +14,40 @@ export const fetchUserInfo = async () => {
     throw error;
   }
 };
+
+export const fetchUsersByKeyword = async (keyword) => {
+  try {
+    const res = await axiosInstance.get('/api/users', {
+      body: {
+        keyword: keyword
+      }
+    })
+    return res.data;
+  } catch (error) {
+    console.error("Error fetching users by keyword:", error);
+    throw error;
+  }
+};
+
+export const fetchUserExtra = async () => {
+  try {
+    const res = await axiosInstance.get('/api/users/users-extra');
+    return res.data;
+  } catch (error) {
+    console.error("Error fetching user extra info:", error);
+    throw error;
+  }
+}
+
+export const updateUserExtra = async (extraData) => {
+  try {
+    const response = await axiosInstance.patch('/api/users/users-extra', extraData);
+    return response.data;
+  } catch (error) {
+    console.error("Error updating user extra info:", error);
+    throw error;
+  }
+}
 
 /**
  * Cập nhật hồ sơ (JSON data: name, phone_number...).

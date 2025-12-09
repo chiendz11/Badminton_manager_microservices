@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer'; // 💡 IMPORT MULTER
 import { UserController } from '../controllers/user.controller.js'; 
+import { User } from '../models/user.model.js';
 
 const router = Router();
 
@@ -32,7 +33,9 @@ router.put(
     upload.single('avatar'), // 💡 MULTER xử lý file với field name là 'avatar'
     UserController.updateAvatar // Controller xử lý file
 ); 
-router.get('/', UserController.getAllUsers);
+
+// 💡 [MỚI] GET / (Gateway: /api/users) - Admin tìm kiếm User theo từ khóa
+router.get('/', UserController.getUsersByKeyword);
 
 // 💡 [MỚI] PATCH /:userId (Gateway: /api/users/:userId) - Admin sửa Profile User
 router.patch('/:userId', UserController.updateUserById);

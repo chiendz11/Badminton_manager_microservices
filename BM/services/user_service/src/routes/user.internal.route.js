@@ -1,7 +1,6 @@
-import { Router } from "express";
-import { verifyInternalSecret } from "../middlewares/internalAuth.middleware.js";
-// Giả sử logic tạo user nằm trong UserController
-import { UserController } from "../controllers/user.controller.js";
+import { Router } from 'express';
+import { UserController } from '../controllers/user.controller.js'; 
+import { verifyInternalSecret } from '../middlewares/internalAuth.middleware.js';
 
 const router = Router();
 
@@ -17,7 +16,7 @@ const router = Router();
 router.post(
     '/users', 
     verifyInternalSecret, // 💡 BẢO VỆ ROUTE NÀY
-    UserController.createProfile // 💡 Hàm controller xử lý logic
+    UserController. createProfile // 💡 Hàm controller xử lý logic
 );
 
 export default router;

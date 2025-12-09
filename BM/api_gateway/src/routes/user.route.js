@@ -49,6 +49,18 @@ router.get("/users",
     userProxy
 );
 
+router.patch("/users/users-extra",
+    authenticate,
+    authorize([GATEWAY_ROLES.USER, GATEWAY_ROLES.CENTER_MANAGER, GATEWAY_ROLES.SUPER_ADMIN]),
+    userProxy
+);
+
+router.get("/users/users-extra",
+    authenticate,
+    authorize([GATEWAY_ROLES.USER, GATEWAY_ROLES.CENTER_MANAGER, GATEWAY_ROLES.SUPER_ADMIN]),
+    userProxy
+);
+
 // 2. GET /api/users/me (Xem profile của tôi)
 router.get("/users/me",
     authenticate,
@@ -74,7 +86,7 @@ router.put("/users/me/avatar",
 );
 
 // 3. GET /api/users/:userId (Admin xem user cụ thể)
-router.patch("/users/:userId",
+router.patch("/users",
     authenticate,
     authorize([GATEWAY_ROLES.SUPER_ADMIN]),
     userProxy

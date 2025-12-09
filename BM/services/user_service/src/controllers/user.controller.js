@@ -1,6 +1,21 @@
 import { UserService } from '../services/user.service.js';
 
 export const UserController = {
+
+    async getUsersByKeyword(req, res) {
+        try {
+            if (!req.body.keyword) {
+                result = await UserService.findAllUsers({});
+                return res.status(200).json({ success: true, ...result });
+            }
+            const { keyword } = req.body.keyword;
+            const users = await UserService.searchUsersByKeyword(keyword);
+            res.status(200).json({ success: true, data: users });
+        } catch (error) {
+            console.error("Error searching users by keyword:", error);
+            res.status(500).json({ success: false, message: "Internal Server Error." });
+        }
+    },
     /**
      * GET /me: Lấy thông tin profile của người dùng hiện tại.
      * (userId được truyền qua header X-User-ID từ API Gateway)
@@ -210,7 +225,7 @@ export const UserController = {
             const updatedUser = await UserService.updateUserById(userId, updateData);
 
             if (!updatedUser) {
-                return res.status(404).json({ message: "Không tìm thấy người dùng." });
+                return res.status(404).json({ message: "[UserService] Không tìm thấy người dùng." });
             }
 
             res.status(200).json({
