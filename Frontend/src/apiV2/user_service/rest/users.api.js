@@ -65,7 +65,7 @@ export const updateMyProfile = async (profileData) => {
 
 /**
  * 💡 API ĐÃ SỬA: Cập nhật ảnh đại diện (File upload).
- * Gọi PUT /api/users/me/avatar (Mô hình Proxy)
+ * Gọi PUT /api/users/me/avatar
  * @param {File} avatarFile - File ảnh thô (raw file) từ input
  */
 export const updateAvatar = async (avatarFile) => {
@@ -73,15 +73,19 @@ export const updateAvatar = async (avatarFile) => {
     // 1. Tạo FormData
     const formData = new FormData();
     
-    // 2. Thêm file vào FormData. 
-    // Tên field 'avatar' phải khớp với upload.single('avatar') trong user.route.js
+    // 2. Thêm file vào FormData.
+    // Lưu ý: Tham số thứ 3 (filename) là optional nhưng nên có để server nhận đúng tên file gốc
     formData.append('avatar', avatarFile, avatarFile.name);
 
-    // 3. Gọi API (PUT /me/avatar) với FormData.
-    // Axios sẽ tự động set Content-Type: multipart/form-data
-    const response = await api.put('/api/users/me/avatar', formData);
+    // 3. Gọi API với cấu hình header RIÊNG BIỆT
+    // Phải set 'Content-Type': 'multipart/form-data' để ghi đè cấu hình JSON mặc định của axiosInstance
+    const response = await api.put('/api/users/me/avatar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     
-    // Trả về profile đã cập nhật (chứa avatar_url mới)
+    // Trả về profile đã cập nhật
     return response.data; 
 
   } catch (error) {

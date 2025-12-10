@@ -10,18 +10,19 @@ import StatsTab from '../components/StatusTab';
 import HistoryTab from '../components/HistoryTab';
 
 // --- [TAB CŨ] ---
-import FriendsTab from '../components/FriendsTab.jsx'; // Chat
-import FindFriendsTab from '../components/FindFriendsTab.jsx'; // Tìm bạn
+import FriendsTab from '../components/FriendsTab.jsx';
+import FindFriendsTab from '../components/FindFriendsTab.jsx';
 
 // --- [NEW - TAB MỚI] ---
-import OtherInfoTab from '../components/OtherInfoTab.jsx'; // Thông tin bổ sung (Meilisearch)
-import FriendManagementTab from '../components/FriendManagementTab.jsx'; // Quản lý bạn bè/Lời mời
+import OtherInfoTab from '../components/OtherInfoTab.jsx';
+import FriendManagementTab from '../components/FriendManagementTab.jsx';
 
 // API & Styles
 import { cancelBooking, deleteBooking } from '../apis/booking';
 import { getDetailedBookingStats, getChartData } from '../apis/users';
+// Import API chính xác
 import { updateMyProfile } from '../apiV2/user_service/rest/users.api';
-import { updateUserPassword } from '../apiV2/auth_service/rest/users.api';
+import { updateUserPassword } from '../apiV2/auth_service/rest/users.api'; 
 import { fetchUserInfo } from '../apiV2/user_service/rest/users.api';
 import '../styles/UserProfile.css';
 
@@ -35,9 +36,9 @@ const getStatusClass = (status) => {
       case 'processing': return 'status-processing';
       default: return '';
     }
-  };
+};
   
-  const getStatusText = (status) => {
+const getStatusText = (status) => {
     switch (status) {
       case 'paid': return 'Hoàn thành';
       case 'confirmed': return 'Hoàn thành';
@@ -46,7 +47,7 @@ const getStatusClass = (status) => {
       case 'processing': return 'Đang xử lý';
       default: return '';
     }
-  };
+};
 
 const UserProfile = () => {
   const navigate = useNavigate();
@@ -54,7 +55,6 @@ const UserProfile = () => {
   const [searchParams] = useSearchParams();
 
   // --- STATES ---
-  // [UPDATE] Thêm 'other-info' và 'friends-manage' vào danh sách tab hợp lệ
   const [activeTab, setActiveTab] = useState(() => {
     const tabFromUrl = searchParams.get('tab');
     const validTabs = ['info', 'stats', 'history', 'friends', 'find', 'other-info', 'friends-manage'];
@@ -70,7 +70,7 @@ const UserProfile = () => {
   const [actionConfig, setActionConfig] = useState(null);
   const [refreshHistoryTrigger, setRefreshHistoryTrigger] = useState(0);
 
-  // States cho Profile Info & Password (giữ nguyên)
+  // States cho Profile Info & Password
   const [editMode, setEditMode] = useState("profile");
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -79,7 +79,7 @@ const UserProfile = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // States cho Stats (giữ nguyên)
+  // States cho Stats
   const [animateStats, setAnimateStats] = useState(false);
   const [statsPeriod, setStatsPeriod] = useState("month");
   const [detailedStats, setDetailedStats] = useState(null);
@@ -94,7 +94,7 @@ const UserProfile = () => {
 
   const getAvatarImagePath = (path) => (path && path.trim() !== "") ? path : DEFAULT_AVATAR_URL;
 
-  // --- USE EFFECTS (Giữ nguyên) ---
+  // --- USE EFFECTS ---
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
     const validTabs = ['info', 'stats', 'history', 'friends', 'find', 'other-info', 'friends-manage'];
@@ -137,9 +137,95 @@ const UserProfile = () => {
     fetchChart();
   }, []);
 
-  // --- HANDLERS (Update Profile, Password, Modal Action...) Giữ nguyên ---
-  const handleChangePassword = async () => { /* ... Logic cũ ... */ };
-  const handleUpdateField = async (field, newValue) => { /* ... Logic cũ ... */ };
+  // --- [FIX 1] HANDLER ĐỔI MẬT KHẨU ---
+  const handleChangePassword = async () => {
+    // 1. Validate phía Frontend
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      alert("Vui lòng nhập đầy đủ: Mật khẩu cũ, Mật khẩu mới và Xác nhận.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert("Mật khẩu mới và xác nhận mật khẩu không khớp.");
+      return;
+    }
+
+    if (newPassword.length < 6) { // Ví dụ validate độ dài
+       alert("Mật khẩu mới phải có ít nhất 6 ký tự.");
+       return;
+    }
+
+    setIsUpdating(true);
+    try {
+      // 2. Tạo payload gồm cả 3 trường như yêu cầu
+      const passwordData = {
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+        confirmPassword: confirmPassword 
+      };
+
+      // 3. Gọi API
+      await updateUserPassword(passwordData);
+
+      // 4. Xử lý thành công
+      alert("Đổi mật khẩu thành công!");
+      
+      // Reset form
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      
+      // Quay lại mode xem profile
+      setEditMode("profile");
+
+    } catch (error) {
+      console.error("Lỗi đổi mật khẩu:", error);
+      // Lấy message lỗi từ backend (thường là error.response.data.message)
+      const msg = error.response?.data?.message || error.message || "Có lỗi xảy ra khi đổi mật khẩu";
+      alert(msg);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // --- [FIX 2] HANDLER UPDATE INFO (Name, Phone, Email) ---
+  const handleUpdateField = async (field, newValue) => {
+    if (!newValue || (typeof newValue === 'string' && newValue.trim() === "")) {
+        alert("Thông tin không được để trống.");
+        return;
+    }
+
+    setIsUpdating(true);
+    try {
+        // Tạo payload dynamic: { [field]: newValue }
+        // Ví dụ: { name: "New Name" } hoặc { phone_number: "0909..." }
+        const updatePayload = { [field]: newValue };
+
+        // Gọi API
+        await updateMyProfile(updatePayload);
+
+        // Cập nhật AuthContext ngay lập tức để UI đổi theo
+        setUser(prev => ({
+            ...prev,
+            ...updatePayload
+        }));
+
+        // alert(`Cập nhật ${field} thành công!`); (Optional: bỏ comment nếu muốn báo mỗi lần sửa)
+    } catch (error) {
+        console.error(`Lỗi cập nhật ${field}:`, error);
+        const msg = error.response?.data?.message || error.message || "Cập nhật thất bại";
+        alert(msg);
+        
+        // Nếu lỗi, có thể cần fetch lại user info gốc để revert UI
+        const originalUser = await fetchUserInfo();
+        if(originalUser?.user) setUser(originalUser.user);
+
+    } finally {
+        setIsUpdating(false);
+    }
+  };
+
+  // --- CÁC HANDLER KHÁC (Modal Action...) Giữ nguyên ---
   const promptAction = (actionType, params) => {
     let title, message;
     switch (actionType) {
@@ -203,13 +289,12 @@ const UserProfile = () => {
           </div>
         </div>
 
-        {/* --- [UPDATE] TABS NAVIGATION --- */}
+        {/* --- TABS NAVIGATION --- */}
         <div className="profile-tabs">
           <button className={`tab-btn ${activeTab === 'info' ? 'active' : ''}`} onClick={() => handleSwitchTab('info')}>
             <i className="fas fa-user"></i><span>Thông tin</span>
           </button>
           
-          {/* [NEW] Tab Thông tin khác (Meilisearch) */}
           <button className={`tab-btn ${activeTab === 'other-info' ? 'active' : ''}`} onClick={() => handleSwitchTab('other-info')}>
             <i className="fas fa-id-card"></i><span>Hồ sơ mở rộng</span>
           </button>
@@ -221,7 +306,6 @@ const UserProfile = () => {
             <i className="fas fa-history"></i><span>Lịch sử</span>
           </button>
 
-          {/* [NEW] Tab Quản lý bạn bè */}
           <button className={`tab-btn ${activeTab === 'friends-manage' ? 'active' : ''}`} onClick={() => handleSwitchTab('friends-manage')}>
             <i className="fas fa-user-friends"></i><span>Bạn bè</span>
           </button>
@@ -245,19 +329,20 @@ const UserProfile = () => {
                showOldPassword={showOldPassword} setShowOldPassword={setShowOldPassword}
                showNewPassword={showNewPassword} setShowNewPassword={setShowNewPassword}
                showConfirmPassword={showConfirmPassword} setShowConfirmPassword={setShowConfirmPassword}
-               handleChangePassword={handleChangePassword} handleUpdateField={handleUpdateField}
+               
+               // --- Pass hàm đã sửa xuống đây ---
+               handleChangePassword={handleChangePassword} 
+               handleUpdateField={handleUpdateField}
+               
                bookingHistory={[]} centerName={centerName} slotGroupsFromLS={slotGroupsFromLS}
                totalAmountLS={totalAmountLS} navigate={navigate} promptCancelBooking={promptCancelBooking}
                getStatusClass={getStatusClass} getStatusText={getStatusText}
             />
           )}
 
-          {/* [NEW] Tab Thông tin mở rộng */}
           {activeTab === 'other-info' && <OtherInfoTab user={user} onUpdate={handleUpdateField} />}
-
-          {/* [NEW] Tab Quản lý bạn bè */}
           {activeTab === 'friends-manage' && <FriendManagementTab user={user} />}
-
+          
           {activeTab === 'stats' && (
             <StatsTab user={user} detailedStats={detailedStats} statsPeriod={statsPeriod} setStatsPeriod={setStatsPeriod} chartData={chartData} loadingChart={loadingChart} chartFilter={chartFilter} setChartFilter={setChartFilter} animateStats={animateStats} />
           )}
