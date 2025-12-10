@@ -10,6 +10,7 @@ export const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 export const JWT_EXPIRY = process.env.JWT_EXPIRY || '15m';
 export const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || '7d';
 export const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8080';
+export const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3000';
 
 // Cấu hình Email (Nodemailer)
 export const EMAIL_USER = process.env.EMAIL_USER;

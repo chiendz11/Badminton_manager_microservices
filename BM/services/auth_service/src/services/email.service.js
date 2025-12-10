@@ -1,7 +1,7 @@
 // services/auth_service/src/services/email.service.js (ĐÃ SỬA ĐỔI)
 
 import nodemailer from 'nodemailer';
-import { EMAIL_USER, EMAIL_PASS, API_GATEWAY_URL } from '../configs/env.config.js';
+import { EMAIL_USER, EMAIL_PASS, PUBLIC_URL } from '../configs/env.config.js';
 
 const transporter = nodemailer.createTransport({
     // ... (Cấu hình transporter giữ nguyên) ...
@@ -18,7 +18,7 @@ const transporter = nodemailer.createTransport({
 
 export const EmailService = {
     sendVerificationEmail: async (toEmail, token) => {
-        const verificationLink = `${API_GATEWAY_URL}/api/auth/verify-user/${token}`;
+        const verificationLink = `${PUBLIC_URL}/api/auth/verify-user/${token}`;
 
         const mailOptions = {
             // ... (Cấu hình mailOptions giữ nguyên) ...
