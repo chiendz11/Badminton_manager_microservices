@@ -1,126 +1,162 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Send, MoreVertical, Phone, Video } from 'lucide-react';
+import { io } from 'socket.io-client'; // Import Socket.io
 import '../styles/FriendsTab.css'; 
 
-// Mock Data
-const MOCK_FRIENDS = [
-  { id: 1, name: "Trợ lý AI", avatar: "https://cdn-icons-png.flaticon.com/512/4712/4712027.png", lastMsg: "Tôi có thể giúp gì?", time: "Vừa xong", type: "ai" },
-  { id: 2, name: "Minh Quân", avatar: "https://i.pravatar.cc/150?u=2", lastMsg: "Mai đi đá cầu không?", time: "5p", type: "human" },
-  { id: 3, name: "Kim Cương", avatar: "https://i.pravatar.cc/150?u=3", lastMsg: "Ok chốt đơn", time: "1h", type: "human" },
-];
+import { getConversations, getConversationById } from '../apiV2/social_service/social.api.js';
+
+const DEFAULT_AVATAR = "https://res.cloudinary.com/dm4uxmmtg/image/upload/v1762859721/badminton_app/avatars/default_user_avatar.png";
+
+// ⚠️ Connect directly to your Social Service Port (e.g., 3001) or configure Gateway Proxy
+// If your Social Service runs on localhost:3002, put that here.
+const SOCKET_URL = "http://localhost:8086"; 
 
 const FriendsTab = ({ currentUser }) => {
-  const [selectedFriend, setSelectedFriend] = useState(MOCK_FRIENDS[0]);
+  const [conversations, setConversations] = useState([]);
+  const [selectedConv, setSelectedConv] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState("");
-  
-  // [SỬA 1]: Đổi tên ref để trỏ vào container thay vì phần tử rỗng
+  const [socket, setSocket] = useState(null); // Store socket instance
+
   const chatContainerRef = useRef(null);
 
+  // --- 1. Initialize Socket Connection ---
   useEffect(() => {
-    if (!selectedFriend) return;
-    setMessages([
-        { id: 1, sender: 'them', text: `Xin chào, đây là tin nhắn từ ${selectedFriend.name}` },
-        { id: 2, sender: 'me', text: 'Chào bạn!' }
-    ]);
-  }, [selectedFriend]);
+      const newSocket = io(SOCKET_URL);
+      setSocket(newSocket);
 
-  // [SỬA 2]: Logic cuộn mới - Chỉ cuộn nội bộ trong div
+      return () => newSocket.close();
+  }, []);
+
+  // --- 2. Fetch Conversations (Sidebar) ---
   useEffect(() => {
-    if (chatContainerRef.current) {
-      const { scrollHeight, clientHeight } = chatContainerRef.current;
-      // Cuộn xuống đáy của container
-      chatContainerRef.current.scrollTo({
-        top: scrollHeight - clientHeight,
-        behavior: 'smooth' 
-      });
-    }
-  }, [messages]);
+    const fetchConversations = async () => {
+      if (!currentUser) return;
+      try {
+        const data = await getConversations();
+        setConversations(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    fetchConversations();
+  }, [currentUser]);
 
+  // --- 3. Handle Room Joining & Real-time Listening ---
+  useEffect(() => {
+    if (!socket || !selectedConv) return;
+
+    // A. Join the specific room for this conversation
+    socket.emit('joinConversation', selectedConv._id);
+
+    // B. Load initial history via API (what we did before)
+    const fetchHistory = async () => {
+        try {
+            const friend = getFriendInfo(selectedConv);
+            const data = await getConversationById(friend.userId);
+            if (data?.messages) setMessages(data.messages);
+        } catch (e) { console.error(e); }
+    };
+    fetchHistory();
+
+    // C. Listen for NEW messages coming from backend
+    socket.on('newMessage', (newMsg) => {
+        // Only append if the message belongs to this conversation
+        if (newMsg.conversationId === selectedConv._id) {
+            setMessages((prev) => [...prev, newMsg]);
+        }
+    });
+
+    // Cleanup: Leave room and remove listener when switching chats
+    return () => {
+        socket.emit('leaveConversation', selectedConv._id);
+        socket.off('newMessage');
+    };
+  }, [selectedConv, socket]); // Re-run when selectedConv changes
+
+  // --- 4. Send Message via Socket ---
   const handleSend = () => {
-    if (!inputVal.trim()) return;
-    setMessages([...messages, { id: Date.now(), sender: 'me', text: inputVal }]);
-    setInputVal("");
+    if (!inputVal.trim() || !selectedConv || !socket) return;
     
-    if (selectedFriend.type === 'ai') {
-        setTimeout(() => {
-            setMessages(prev => [...prev, { id: Date.now()+1, sender: 'them', text: "Tôi đang xử lý yêu cầu của bạn..." }]);
-        }, 1000);
-    }
+    // Emit 'sendMessage' event to backend
+    socket.emit('sendMessage', {
+        senderId: currentUser.userId,
+        conversationId: selectedConv._id,
+        content: inputVal
+    });
+
+    setInputVal("");
+    // Note: We don't manually setMessages here anymore. 
+    // We wait for the server to emit 'newMessage' back to us.
   };
 
+  // ... (Keep your getFriendInfo, formatTime, scroll logic, and return JSX the same) ...
+  // (Helpers omitted for brevity, use previous code)
+  
+  const getFriendInfo = (conversation) => {
+    if (!conversation?.memberDetails || !currentUser) return {};
+    return conversation.memberDetails.find(m => m.userId !== currentUser.userId) || {};
+  };
+
+  const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : "";
+  
+  // Logic to auto-scroll
+  useEffect(() => {
+      if (chatContainerRef.current) {
+          const { scrollHeight, clientHeight } = chatContainerRef.current;
+          chatContainerRef.current.scrollTo({ top: scrollHeight - clientHeight, behavior: 'smooth' });
+      }
+  }, [messages]);
+
+
   return (
-    <div className="friends-tab-container">
-      {/* CỘT TRÁI GIỮ NGUYÊN */}
-      <div className="friends-sidebar">
-        <div className="sidebar-header">
-            <h3>Đoạn chat</h3>
-            <div className="search-box">
-                <Search size={16} />
-                <input placeholder="Tìm kiếm tin nhắn..." />
-            </div>
-        </div>
-        <div className="friends-list">
-            {MOCK_FRIENDS.map(f => (
-                <div 
-                    key={f.id} 
-                    className={`friend-item ${selectedFriend?.id === f.id ? 'active' : ''}`}
-                    onClick={() => setSelectedFriend(f)}
-                >
-                    <img src={f.avatar} alt="" />
-                    <div className="friend-info">
-                        <div className="friend-name">{f.name}</div>
-                        <div className="friend-last-msg">{f.lastMsg} • {f.time}</div>
-                    </div>
-                </div>
-            ))}
-        </div>
-      </div>
-
-      {/* CỘT PHẢI */}
-      <div className="chat-area">
-        {selectedFriend ? (
-            <>
-                <div className="chat-header">
-                    <div className="chat-user-info">
-                        <img src={selectedFriend.avatar} alt="" />
-                        <div>
-                            <h4>{selectedFriend.name}</h4>
-                            <span>{selectedFriend.type === 'ai' ? 'Luôn hoạt động' : 'Đang hoạt động'}</span>
+     // ... Copy your JSX exactly as before, just ensure handleSend is used ...
+     <div className="friends-tab-container">
+        {/* ... Sidebar ... */}
+        <div className="friends-sidebar">
+             {/* ... Same as before ... */}
+             <div className="friends-list">
+                {conversations.map(conv => {
+                    const friend = getFriendInfo(conv);
+                    return (
+                        <div key={conv._id} onClick={() => setSelectedConv(conv)} className={`friend-item ${selectedConv?._id === conv._id ? 'active' : ''}`}>
+                             <img src={friend.avatar_url || DEFAULT_AVATAR} onError={(e)=>e.target.src=DEFAULT_AVATAR}/>
+                             <div className="friend-info">
+                                 <div className="friend-name">{friend.name}</div>
+                             </div>
                         </div>
-                    </div>
-                    <div className="chat-actions">
-                        <Phone size={20} />
-                        <Video size={20} />
-                        <MoreVertical size={20} />
-                    </div>
-                </div>
+                    )
+                })}
+             </div>
+        </div>
 
-                {/* [SỬA 3]: Gắn ref vào thẻ div cha (chat-messages) và bỏ thẻ div rỗng ở cuối */}
-                <div className="chat-messages" ref={chatContainerRef}>
-                    {messages.map(msg => (
-                        <div key={msg.id} className={`msg-bubble ${msg.sender === 'me' ? 'me' : 'them'}`}>
-                            {msg.text}
-                        </div>
-                    ))}
-                    {/* Đã xóa <div ref={endRef} /> vì không cần nữa */}
-                </div>
+        {/* ... Chat Area ... */}
+        <div className="chat-area">
+            {selectedConv ? (
+                <>
+                    {/* Header */}
+                    <div className="chat-header">
+                        <h4>{getFriendInfo(selectedConv).name}</h4>
+                    </div>
 
-                <div className="chat-input-wrapper">
-                    <input 
-                        value={inputVal}
-                        onChange={e => setInputVal(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleSend()}
-                        placeholder="Nhập tin nhắn..."
-                    />
-                    <button onClick={handleSend}><Send size={20} /></button>
-                </div>
-            </>
-        ) : (
-            <div className="no-chat-selected">Chọn một người để bắt đầu trò chuyện</div>
-        )}
-      </div>
-    </div>
+                    {/* Messages */}
+                    <div className="chat-messages" ref={chatContainerRef}>
+                        {messages.map(msg => (
+                            <div key={msg._id} className={`msg-bubble ${msg.senderId === currentUser.userId ? 'me' : 'them'}`}>
+                                {msg.content}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Input */}
+                    <div className="chat-input-wrapper">
+                        <input value={inputVal} onChange={e => setInputVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()} />
+                        <button onClick={handleSend}><Send size={20} /></button>
+                    </div>
+                </>
+            ) : <div className="no-chat-selected">Select a chat</div>}
+        </div>
+     </div>
   );
 };
 

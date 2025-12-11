@@ -4,6 +4,8 @@ import { DEFAULT_AVATAR_FILE_ID } from '../configs/env.config.js';
 import { UserExtraService } from './user-extra.service.js';
 import { MeiliSearch } from 'meilisearch';
 import { publishToExchange } from '../clients/rabbitmq.client.js';
+import { ROUTING_KEYS } from '../clients/rabbitmq.client.js';
+import consola from 'consola';
 
 
 const client = new MeiliSearch({
@@ -60,14 +62,16 @@ export const UserService = {
     async createProfile(profileData) {
         try {
             // 1. Tạo một đối tượng User mới từ Schema và dữ liệu được truyền vào.
-            const newUser = new User(profileData);
-
-            // 2. Lưu vào MongoDB.
-            await newUser.save();
-            await UserExtraService.initUserExtra(newUser.userId);
-
-            // 3. Trả về đối tượng profile đã lưu
-            const savedProfile = newUser.toObject();
+            consola.info(`[UserService] Bắt đầu tạo hồ sơ mới cho email: ${profileData.email} / username: ${profileData.username}`);
+            const savedProfile = await User.findOneAndUpdate(
+                {$or: [
+                    { email: profileData.email },
+                    { username: profileData.username }
+                ]},
+                { $set: profileData }, // Chỉ set nếu insert mới
+                { new: true, upsert: true, lean: true } // Trả về document mới và upsert
+            );
+            await UserExtraService.initUserExtra(savedProfile.userId);
 
             console.log(`[UserService] ✅ Tạo hồ sơ mới thành công cho userId: ${savedProfile.userId}`);
 
@@ -75,18 +79,13 @@ export const UserService = {
             // Booking Service cần userId và points (mặc định là 0)
             const eventMessage = {
                 type: 'USER_CREATED',
-                payload: {
-                    userId: savedProfile.userId,
-                    points: savedProfile.points || 0,
-                    // Có thể gửi thêm name, avatar nếu Booking cần hiển thị
-                    name: savedProfile.name
-                },
+                payload: savedProfile,
                 timestamp: new Date()
             };
 
             // Gọi hàm publish đã có sẵn trong rabbitmq.client.js
             // Routing key để rỗng vì exchange là 'fanout'
-            await publishToExchange('', eventMessage);
+            await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventMessage);
 
             return savedProfile;
 
@@ -102,7 +101,7 @@ export const UserService = {
         const cleanUserId = userId.trim();
 
         try {
-            const updatedUser = await User.findOneAndUpdate(
+            const savedProfile = await User.findOneAndUpdate(
                 { userId: cleanUserId },  // Điều kiện tìm (bằng UUID)
                 { $set: dataToUpdate },   // Dữ liệu cần cập nhật
                 {
@@ -117,14 +116,22 @@ export const UserService = {
                 }
             );
 
-            if (!updatedUser) {
+            if (!savedProfile) {
                 // Lỗi này không nên xảy ra nếu logic FE đúng
                 console.warn(`[UserService] ❌ Không tìm thấy hồ sơ User để CẬP NHẬT (userId: ${cleanUserId})`);
                 throw new Error("Không tìm thấy hồ sơ người dùng để cập nhật.");
             }
 
+            const eventMessage = {
+                type: 'USER_UPDATED',
+                payload: savedProfile,
+                timestamp: new Date()
+            };
+
+            await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventMessage);
+
             console.log(`[UserService] ✅ Cập nhật hồ sơ thành công cho userId: ${cleanUserId}`);
-            return updatedUser;
+            return savedProfile;
 
         } catch (error) {
             // Lỗi (thường là 11000 - Trùng SĐT) sẽ được Controller bắt
@@ -153,13 +160,21 @@ export const UserService = {
             // Nếu payload có gửi email/username, ta lờ đi.
 
             // 2. Thực hiện Update
-            const updatedUser = await User.findOneAndUpdate(
+            const savedProfile = await User.findOneAndUpdate(
                 { userId: cleanUserId }, // Tìm theo UUID
                 { $set: allowedUpdates },
                 { new: true, runValidators: true } // Trả về document mới nhất và chạy validate schema
             ).select('-__v'); // Ẩn version key
 
-            return updatedUser;
+            const eventMessage = {
+                type: 'USER_UPDATED',
+                payload: savedProfile,
+                timestamp: new Date()
+            };
+
+            await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventMessage);
+
+            return savedProfile;
 
         } catch (error) {
             console.error(`[UserService] updateUserById Error:`, error.message);

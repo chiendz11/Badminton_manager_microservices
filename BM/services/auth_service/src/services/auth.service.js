@@ -405,7 +405,7 @@ export const AuthService = {
                 timestamp: new Date()
             };
 
-            await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventPayload);
+            await publishToExchange(ROUTING_KEYS.USER_STATUS_UPDATE_EVENT, eventPayload);
 
             return updatedUser;
         } catch (error) {

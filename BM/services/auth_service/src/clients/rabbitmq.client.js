@@ -7,6 +7,7 @@ const EXCHANGE_NAME = 'user_events_exchange';
 export const ROUTING_KEYS = {
     USER_EXTRA_UPDATE_EVENT : 'user.update.extra',
     USER_PROFILE_UPDATE_EVENT : 'user.update.profile',
+    USER_STATUS_UPDATE_EVENT : 'user.update.status',
     USER_UPDATE_ANY: 'user.update.*'
 };
 

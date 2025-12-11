@@ -1,7 +1,8 @@
 import amqp from 'amqplib';
 import { MeiliSearch } from 'meilisearch';
 import consola from 'consola';
-import { ROUTING_KEYS } from '../clients/rabbitmq.client.js';
+import { UserService } from '../services/user.service.js';
+import { ROUTING_KEYS, EXCHANGE_NAME} from '../clients/rabbitmq.client.js';
 
 const client = new MeiliSearch({
     host: process.env.MEILISEARCH_URL || 'http://my_meilisearch:7700',
@@ -33,13 +34,19 @@ export const startMeiliSearchWorker = async () => {
 
                 consola.info("Received message for MeiliSearch sync:", message);
                 const index = client.index('users');
+                const data = message.payload || message;
+
                 
                 switch (routingKey) {
                     case ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT:
-                        update = {
-
-                        };
-                        // hộ cái =)))
+                        if (data) {
+                            update = {
+                                userId: data.userId,
+                                ... data
+                            }
+                        } else {
+                            consola.warn("⚠️ Invalid payload for status update");
+                        }
                         break;
                     case ROUTING_KEYS.USER_EXTRA_UPDATE_EVENT:
                         update = {
@@ -53,8 +60,8 @@ export const startMeiliSearchWorker = async () => {
                         return;
                 }
                 try {
-                    await index.addDocuments([update]);
-                    consola.info(`Successfully indexed user data for userId: ${message.userId}`);
+                    await index.updateDocuments([update]);
+                    consola.info(`Successfully indexed user data for userId: ${update.userId}`);
                     channel.ack(msg);
                 } catch (error) {
                     consola.error("Failed to index user data in MeiliSearch:", error);

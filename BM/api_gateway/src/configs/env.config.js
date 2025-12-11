@@ -11,4 +11,5 @@ export const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
 export const ADMIN_ORIGIN = process.env.ADMIN_ORIGIN || "http://localhost:5174";
 export const CENTER_SERVICE_URL = process.env.CENTER_SERVICE_URL;
 export const STORAGE_SERVICE_URL = process.env.STORAGE_SERVICE_URL;
-export const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET
+export const INTERNAL_AUTH_SECRET = process.env.INTERNAL_AUTH_SECRET;
+export const SOCIAL_SERVICE_URL = process.env.SOCIAL_SERVICE_URL;

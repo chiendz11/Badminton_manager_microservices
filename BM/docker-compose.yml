@@ -103,9 +103,10 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine # Bản management có giao diện web
     container_name: my_rabbitmq
+    expose:
+      - "5672"  # Cổng chính để các service kết nối
     ports:
-      - "5672:5672"   # Port cho code kết nối
-      - "15672:15672" # Port cho giao diện Web (User/Pass mặc định: guest/guest)
+      - "15672:15672" # Cổng web management (cổng này có thể mở ra ngoài để quản lý nếu cần)
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -122,7 +123,9 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.10
     container_name: my_meilisearch
-    ports:
+    expose:
+      - "7700"
+    ports: 
       - "7700:7700"
     environment:
       - MEILI_MASTER_KEY=masterKey123 # Key để bảo mật, bắt buộc phải có
@@ -225,6 +228,7 @@ services:
       - USER_SERVICE_URL=${GATEWAY_USER_URL}
       - CENTER_SERVICE_URL=${GATEWAY_CENTER_URL}
       - STORAGE_SERVICE_URL=${GATEWAY_STORAGE_URL}
+      - SOCIAL_SERVICE_URL=${GATEWAY_SOCIAL_URL}
       
       # --- SHARED CONFIG ---
       - JWT_SECRET=${SHARED_JWT_SECRET}
@@ -244,12 +248,33 @@ services:
       - microservice_network
     logging: *default-logging
 
-  #booking service
+  #social service
+  social_service:
+    build: ./services/social_service
+    container_name: social_service
+    expose:
+      - "8086"
+    ports:
+      - "8086:8086" # DELETE THIS IMMEDIATELY IN PRODUCTION, ONLY FOR LOCAL TESTING
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${SOCIAL_PORT}
+      - MONGO_URI=${SOCIAL_MONGO_URI}
+      - RABBITMQ_URL=amqp://guest:guest@my_rabbitmq:5672
+    env_file:
+      - .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservice_network
+
+  #booking service  
   booking_service:
     build: ./services/booking_service # Đường dẫn đến folder chứa Dockerfile
     container_name: booking_service
-    ports:
-      - "8082:8082" # Map port ra ngoài để test local nếu cần
+    expose:
+      - "8082"
     environment:
       - REDIS_HOST=redis  
       - REDIS_PORT=6379
@@ -268,8 +293,12 @@ services:
       - PAYOS_CLIENT_ID=${PAYOS_CLIENT_ID}
       - PAYOS_API_KEY=${PAYOS_API_KEY}
       - PAYOS_CHECKSUM_KEY=${PAYOS_CHECKSUM_KEY}
+      - RABBITMQ_URL=amqp://guest:guest@my_rabbitmq:5672
     env_file:
       - .env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     networks:
       - microservice_network
 
@@ -284,16 +313,16 @@ services:
       - .env
     networks:
       - microservice_network
-    ports:
-      - "4040:4040" # Ngrok web interface
+    expose:
+      - "4040"
     depends_on:
       - booking_service
 
   redis:
     image: redis:alpine
     container_name: bm_redis
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     networks:
       - microservice_network
 

@@ -16,10 +16,7 @@ export const startUserServiceWorker = async () => {
         await channel.assertQueue(QUEUE_NAME, { durable: true });
 
         // 👇 2. Bind Routing Key CŨ (User Extra)
-        await channel.bindQueue(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEYS.USER_EXTRA_UPDATE_EVENT);
-
-        // 👇 3. Bind Routing Key MỚI (User Profile) -> Để Queue nhận được tin nhắn này
-        await channel.bindQueue(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT);
+        await channel.bindQueue(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEYS.USER_UPDATE_ANY);
 
         await channel.prefetch(1);
 
@@ -28,7 +25,8 @@ export const startUserServiceWorker = async () => {
         channel.consume(QUEUE_NAME, async (msg) => {
             if (msg !== null) {
                 const messageContent = msg.content.toString();
-                const message = JSON.parse(messageContent);
+                const message = JSON.parse(messageContent).payload || JSON.parse(messageContent);
+                    
                 // 👇 Lấy Routing Key từ metadata của tin nhắn RabbitMQ
                 const routingKey = msg.fields.routingKey; 
 
@@ -46,10 +44,15 @@ export const startUserServiceWorker = async () => {
 
                         // 👉 CASE B: Update trạng thái (Logic MỚI)
                         case ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT:
+                            // already handled in service so just ack it 
+                            consola.success(`✅ Processed Profile Update for userId: ${message.userId}`);
+                            break;
+
+                        case ROUTING_KEYS.USER_STATUS_UPDATE_EVENT:
                             // Giả sử payload gửi sang là { userId: '...', isActive: true/false }
-                            if (message.payload.userId && message.payload.isActive !== undefined) {
-                                await UserService.updateUserStatus(message.payload.userId, message.payload.isActive);
-                                consola.success(`✅ Updated Status for userId: ${message.payload.userId} -> ${message.payload.isActive}`);
+                            if (message.userId && message.isActive !== undefined) {
+                                await UserService.updateUserStatus(message.userId, message.isActive);
+                                consola.success(`✅ Updated Status for userId: ${message.userId} -> ${message.isActive}`);
                             } else {
                                 consola.warn("⚠️ Invalid payload for status update");
                             }

@@ -15,7 +15,7 @@ export class Friendship {
     @Prop({ type: String, required: true})
     addresseeId: string;
 
-    @Prop({ type: String, required: true, enum: FriendshipStatus, default: FriendshipStatus.REQUESTED })
+    @Prop({ type: String, enum: FriendshipStatus, default: FriendshipStatus.REQUESTED })
     status: FriendshipStatus;
 }
 

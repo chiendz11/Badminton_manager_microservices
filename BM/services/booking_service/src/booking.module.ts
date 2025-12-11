@@ -13,9 +13,33 @@ import { PaymentService } from './Service/payment.service';
 import { Court, CourtSchema } from './Schema/court.schema';
 import { BullModule } from '@nestjs/bullmq';
 import { BookingProcessor } from './booking-expiration.processor';
+import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
+import { connection } from 'mongoose';
+import { UserWorker } from './Worker/user-profile.worker';
 
 @Module({
   imports: [
+    RabbitMQModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+      uri: configService.get("RABBITMQ_URI") || 'amqp://guest:guest@my_rabbitmq:5672', //not process.env.RABBITMQ_URI
+      exchanges: [
+        {
+          name: 'user_events_exchange',
+          type: 'topic',
+          options: {
+            durable: true,
+          },
+        },
+      ],
+      connectionInitOptions: {
+        wait: true,
+        retries: 5,
+        delay: 3000,
+      },
+    }),
+      inject: [ConfigService],
+  }),
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -60,6 +84,7 @@ import { BookingProcessor } from './booking-expiration.processor';
     CenterService,
     PaymentService,
     BookingProcessor,
+    UserWorker
   ],
 })
 export class BookingModule {}

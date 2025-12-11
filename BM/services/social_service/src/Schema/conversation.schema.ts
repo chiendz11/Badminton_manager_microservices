@@ -15,11 +15,8 @@ export class Conversation {
     @Prop({type: [String], required: true})
     memberIds: string[];
 
-    @Prop({type: String, enum: ConversationType, required: true, default: ConversationType.PRIVATE})
+    @Prop({type: String, enum: ConversationType, default: ConversationType.PRIVATE})
     type: ConversationType;
-
-    @Prop({type: Message, required: false})
-    lastMessage?: Message;
 }
 
 export const ConversationSchema = SchemaFactory.createForClass(Conversation);

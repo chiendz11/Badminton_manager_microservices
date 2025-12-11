@@ -1,4 +1,5 @@
 import { UserService } from '../services/user.service.js';
+import consola from 'consola';
 
 export const UserController = {
 
@@ -6,6 +7,7 @@ export const UserController = {
     async getUsers(req, res) {
         try {
             // Lấy tất cả tham số từ URL Query (ví dụ: ?keyword=abc&page=1...)
+            consola.log("[UserController] getUsers with query:", req.query);
             const { 
                 keyword, // Dành cho tìm kiếm nâng cao (MeiliSearch)
                 page, limit, search, level, sort, order, role, isActive // Dành cho list thường (DB)
@@ -15,6 +17,7 @@ export const UserController = {
             // TRƯỜNG HỢP 1: Có từ khóa 'keyword' -> Dùng MeiliSearch
             // -----------------------------------------------------------
             if (keyword) {
+                consola.log("[UserController] Tìm kiếm người dùng với từ khóa:", keyword);
                 // Lưu ý: searchUsersByKeyword cần nhận string, không phải object
                 const users = await UserService.meiliFindUsersByKeywords(keyword);
                 

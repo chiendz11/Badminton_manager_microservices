@@ -198,3 +198,50 @@
     padding: 8px 16px; border-radius: 6px; cursor: default;
     display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%;
 }
+
+/* Add this to your existing CSS */
+
+.card-actions {
+    margin-top: 8px;
+    width: 100%;
+}
+
+.action-row {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-friend {
+    background-color: #e5e7eb;
+    color: #374151;
+    /* Styles for "Friends" button (usually gray/neutral) */
+}
+
+.btn-friend:hover {
+    background-color: #ffe4e6; /* Light red on hover to indicate unfriend */
+    color: #ef4444;
+    content: "Hủy kết bạn"; /* Advanced CSS trick, or just keep it simple */
+}
+
+.btn-accept {
+    background-color: #10b981; /* Green */
+    color: white;
+    flex: 1;
+    border: none;
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn-decline {
+    background-color: #f3f4f6;
+    color: #4b5563;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.btn-decline:hover {
+    background-color: #ef4444; /* Red */
+    color: white;
+}

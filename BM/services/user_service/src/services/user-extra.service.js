@@ -1,6 +1,8 @@
 import { UserExtra } from "../models/user-extra.model.js";
 import { consola } from "consola";
 import { publishToExchange } from '../clients/rabbitmq.client.js';
+import { ROUTING_KEYS } from '../clients/rabbitmq.client.js';
+import { User } from "../models/user.model.js";
 
 
 export const UserExtraService = {
@@ -12,7 +14,7 @@ export const UserExtraService = {
                 extraData
             };
 
-            publishToExchange('', message);
+            publishToExchange(ROUTING_KEYS.USER_EXTRA_UPDATE_EVENT, message);
             consola.info(`Published user extra update for userId: ${userId}`);
         } catch (error) {
             consola.error("Failed to publish user extra update:", error);
@@ -50,8 +52,11 @@ export const UserExtraService = {
             preferredTime: [],
             bio: ''
         };
-        const userExtra = new UserExtra(initData);
-        return await userExtra.save();
+        return await UserExtra.findOneAndUpdate(
+            { userId },
+            { $set: initData },
+            { new: true, upsert: true }
+        );
         }
 
 };

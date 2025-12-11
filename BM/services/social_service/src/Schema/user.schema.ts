@@ -19,9 +19,6 @@ export class User {
 
     @Prop({ required: true, enum: ['USER', 'CENTER_MANAGER', 'SUPER_ADMIN'] })
     role: string;
-
-    @Prop({ enum: ['đồng', 'bạc', 'vàng', 'bạch kim', 'kim cương'] })
-    level?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
