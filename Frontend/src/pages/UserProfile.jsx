@@ -259,7 +259,15 @@ const UserProfile = () => {
     finally { setActionConfig(null); }
   };
 
-  if (isLoading) return <div className="profile-loading"><div className="spinner"></div><p>Loading...</p></div>;
+  // --- 1. SỬA LOADING TOÀN TRANG ---
+  if (isLoading) {
+    return (
+      <div className="profile-loading">
+        <div className="badminton-spinner"></div>
+        <p className="loading-text">Đang tải dữ liệu...</p>
+      </div>
+    );
+  }
 
   const handleSwitchTab = (tabName) => setActiveTab(tabName);
 

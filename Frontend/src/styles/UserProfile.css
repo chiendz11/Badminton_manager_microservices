@@ -35,38 +35,75 @@
   color: var(--text-color);
 }
 
-/* Loading Animation */
+/* --- MÀN HÌNH LOADING BAN ĐẦU (IsLoading) --- */
 .profile-loading {
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  height: 60vh;
-}
-
-.loading-spinner {
-  width: 60px;
-  height: 60px;
-  margin-bottom: 20px;
-}
-
-.spinner {
+  align-items: center;
+  height: 100vh;
   width: 100%;
-  height: 100%;
-  border: 4px solid var(--bg-dark);
-  border-top: 4px solid var(--primary-color);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+  /* Gradient nhẹ màu xanh sân cầu */
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
 }
 
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
+.badminton-spinner {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  position: relative;
+  animation: rotate 1s linear infinite;
+  
+  /* Tạo viền giống màu thảm sân (Xanh đậm) */
+  border: 4px solid #d1fae5; /* Xanh nhạt (phần nền) */
+  border-top-color: #166534; /* Xanh đậm (màu chủ đạo của sân) */
+  border-left-color: #166534; 
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
 
-  100% {
-    transform: rotate(360deg);
-  }
+/* --- THÊM HIỆU ỨNG QUẢ CẦU GIỮA SPINNER (Optional) --- */
+/* Tạo một chấm tròn trắng ở giữa giống đuôi quả cầu */
+.badminton-spinner::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  background-color: #166534;
+  border-radius: 50%;
+}
+
+.loading-text {
+  margin-top: 15px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #166534; /* Chữ màu xanh sân cầu */
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.loading-text {
+  margin-top: 15px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #166534; /* Chữ màu xanh sân cầu */
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+/* --- ANIMATIONS --- */
+@keyframes rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
 }
 
 /* Profile Header */
