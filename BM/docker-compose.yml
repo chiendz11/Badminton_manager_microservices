@@ -37,12 +37,15 @@ services:
       - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
 
       # Default Assets
+      - REDIS_HOST=redis 
+      - REDIS_PORT=6379
       - RABBITMQ_URL=amqp://guest:guest@my_rabbitmq:5672 
     env_file:
       - .env
     restart: always
     depends_on:
       - user_service
+      - redis
     networks:
       - microservice_network
     logging: &default-logging

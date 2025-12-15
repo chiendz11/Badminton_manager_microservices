@@ -1,7 +1,7 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { BookingDocument } from '../Schema/booking.schema';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import mongoose, { Model } from 'mongoose';
 import { Booking } from '../Schema/booking.schema';
 import { Court, CourtDocument } from '../Schema/court.schema'; // Đảm bảo đường dẫn đúng
 import { CreateBookingDTO } from '../DTO/create-booking.DTO';
@@ -24,7 +24,7 @@ type CreateBookingParams = CreateBookingDTO & { userId: string };
 @Injectable()
 export class BookingService {
   constructor(
-    @InjectQueue('booking-expiration') 
+    @InjectQueue('booking-expiration')
     private bookingQueue: any,
     @InjectModel(Booking.name)
     private bookingModel: Model<BookingDocument>,
@@ -34,7 +34,7 @@ export class BookingService {
     private userModel: Model<User>,
     @InjectModel(Court.name)
     private courtModel: Model<CourtDocument>,
-  ) {}
+  ) { }
 
   private isWeekend = (dateString: string) => {
     const date = new Date(dateString);
@@ -209,12 +209,12 @@ export class BookingService {
 
     await this.bookingQueue.add(
       'check-expiry',
-      { 
-        bookingId: newBooking._id.toString() 
-      }, 
-      { 
+      {
+        bookingId: newBooking._id.toString()
+      },
+      {
         delay: 5 * 60 * 1000,
-        removeOnComplete: true 
+        removeOnComplete: true
       }
     );
 
@@ -235,7 +235,19 @@ export class BookingService {
   }
 
   async updateBookingStatus(bookingId: string, status: BookingStatus): Promise<Booking | null> {
-    const booking = await this.bookingModel.findById(bookingId);
+    let objectId;
+
+    // 1. Kiểm tra và Chuyển đổi sang ObjectId
+    try {
+      objectId = new mongoose.Types.ObjectId(bookingId);
+    } catch (e) {
+      // Xử lý lỗi nếu chuỗi bookingId không phải là ObjectId hợp lệ (Fail Fast)
+      throw new BadRequestException('Invalid booking ID format');
+    }
+
+    // 2. Sử dụng ObjectId để truy vấn
+    const booking = await this.bookingModel.findById(objectId);
+    // HOẶC: const booking = await this.bookingModel.findOne({ _id: objectId });
 
     if (!booking) {
       throw new NotFoundException('Booking not found');
@@ -283,55 +295,55 @@ export class BookingService {
   }
 
   async getUserBookingHistory(userId: string, queryParams: GetHistoryDto) {
-    const { 
-      page = 1, 
-      limit = 10, 
-      status, 
-      centerId, 
-      dateFrom, 
-      dateTo, 
-      search 
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      centerId,
+      dateFrom,
+      dateTo,
+      search
     } = queryParams;
 
     const skip = (page - 1) * limit;
 
     // 1. Xây dựng Filter
-    const filter: any = { 
-        userId,
-        isDeleted: false 
+    const filter: any = {
+      userId,
+      isDeleted: false
     };
 
     if (status && status !== 'all') {
-        filter.bookingStatus = (status === 'paid') ? 'confirmed' : status;
+      filter.bookingStatus = (status === 'paid') ? 'confirmed' : status;
     }
 
     if (centerId && centerId !== 'all') {
-        filter.centerId = centerId;
+      filter.centerId = centerId;
     }
 
     if (dateFrom || dateTo) {
-        filter.bookDate = {};
-        if (dateFrom) {
-            const start = new Date(dateFrom);
-            start.setHours(0, 0, 0, 0);
-            filter.bookDate.$gte = start;
-        }
-        if (dateTo) {
-            const end = new Date(dateTo);
-            end.setHours(23, 59, 59, 999);
-            filter.bookDate.$lte = end;
-        }
+      filter.bookDate = {};
+      if (dateFrom) {
+        const start = new Date(dateFrom);
+        start.setHours(0, 0, 0, 0);
+        filter.bookDate.$gte = start;
+      }
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        filter.bookDate.$lte = end;
+      }
     }
 
     if (search) {
-        const searchRegex = { $regex: search, $options: 'i' };
-        if (search.match(/^[0-9a-fA-F]{24}$/)) {
-            filter._id = search;
-        } else {
-            filter.$or = [
-                { centerId: searchRegex }, 
-            ];
-        }
+      const searchRegex = { $regex: search, $options: 'i' };
+      if (search.match(/^[0-9a-fA-F]{24}$/)) {
+        filter._id = search;
+      } else {
+        filter.$or = [
+          { centerId: searchRegex },
+        ];
+      }
     }
 
     // 2. Query DB Booking
@@ -354,19 +366,19 @@ export class BookingService {
     const courtIds = new Set<string>();
 
     bookings.forEach(b => {
-        if (b.centerId) centerIds.add(b.centerId);
-        if (b.courtBookingDetails) {
-            b.courtBookingDetails.forEach(detail => {
-                if (detail.courtId) courtIds.add(detail.courtId);
-            });
-        }
+      if (b.centerId) centerIds.add(b.centerId);
+      if (b.courtBookingDetails) {
+        b.courtBookingDetails.forEach(detail => {
+          if (detail.courtId) courtIds.add(detail.courtId);
+        });
+      }
     });
 
     // B2: Query 1 lần duy nhất vào Collection Center và Court
     // (Nhanh hơn việc gọi findOne trong vòng lặp map)
     const [centersList, courtsList] = await Promise.all([
-        this.centerModel.find({ centerId: { $in: Array.from(centerIds) } }).select('centerId name').lean(),
-        this.courtModel.find({ courtId: { $in: Array.from(courtIds) } }).select('courtId name').lean() // Lấy tên sân
+      this.centerModel.find({ centerId: { $in: Array.from(centerIds) } }).select('centerId name').lean(),
+      this.courtModel.find({ courtId: { $in: Array.from(courtIds) } }).select('courtId name').lean() // Lấy tên sân
     ]);
 
     // B3: Tạo Map để tra cứu nhanh
@@ -379,35 +391,35 @@ export class BookingService {
 
     // 3. Format dữ liệu trả về
     const formattedData = bookings.map((booking) => {
-        // a. Lấy tên Center từ Map
-        const centerName = centerMap.get(booking.centerId) || booking.centerId;
+      // a. Lấy tên Center từ Map
+      const centerName = centerMap.get(booking.centerId) || booking.centerId;
 
-        // b. Format Giờ chơi (Lookup tên Court từ Map)
-        const courtTime = booking.courtBookingDetails.map((detail) => {
-          const slots = detail.timeslots.sort((a, b) => a - b);
-          if (slots.length === 0) return '';
-          
-          const start = slots[0];
-          const end = slots[slots.length - 1] + 1;
-          
-          // 👇 LOGIC MỚI: Lấy tên sân từ Map, nếu không có thì fallback về ID
-          const courtName = courtMap.get(detail.courtId) || `Sân ${detail.courtId}`;
+      // b. Format Giờ chơi (Lookup tên Court từ Map)
+      const courtTime = booking.courtBookingDetails.map((detail) => {
+        const slots = detail.timeslots.sort((a, b) => a - b);
+        if (slots.length === 0) return '';
 
-          return `${courtName}: ${start}:00 - ${end}:00`;
-        }).join('\n');
+        const start = slots[0];
+        const end = slots[slots.length - 1] + 1;
 
-        return {
-          bookingId: booking._id,
-          orderId: booking._id.toString().slice(-6).toUpperCase(),
-          status: booking.bookingStatus,
-          center: centerName,
-          court_time: courtTime,
-          date: booking.bookDate,
-          price: booking.price,
-          paymentMethod: 'Chuyển khoản / PayOS',
-          createdAt: booking['createdAt']
-        };
-      });
+        // 👇 LOGIC MỚI: Lấy tên sân từ Map, nếu không có thì fallback về ID
+        const courtName = courtMap.get(detail.courtId) || `Sân ${detail.courtId}`;
+
+        return `${courtName}: ${start}:00 - ${end}:00`;
+      }).join('\n');
+
+      return {
+        bookingId: booking._id,
+        orderId: booking._id.toString().slice(-6).toUpperCase(),
+        status: booking.bookingStatus,
+        center: centerName,
+        court_time: courtTime,
+        date: booking.bookDate,
+        price: booking.price,
+        paymentMethod: 'Chuyển khoản / PayOS',
+        createdAt: booking['createdAt']
+      };
+    });
 
     // 4. Return
     return {
@@ -417,5 +429,190 @@ export class BookingService {
       page,
       limit,
     };
+  }
+
+  async getUserStatistics(userId: string, period: 'week' | 'month' | 'year' = 'month') {
+    // 1. Xác định khoảng thời gian lọc
+    const now = new Date();
+    let startDate = new Date();
+
+    if (period === 'week') {
+      startDate.setDate(now.getDate() - 7);
+    } else if (period === 'month') {
+      startDate.setMonth(now.getMonth() - 1);
+    } else if (period === 'year') {
+      startDate.setFullYear(now.getFullYear() - 1);
+    } else {
+      // Mặc định lấy từ đầu năm nay
+      startDate = new Date(now.getFullYear(), 0, 1);
+    }
+
+    // Lấy điểm hiện tại của user (để hiển thị ở overview)
+    const user = await this.userModel.findOne({ userId }).lean();
+    const currentPoints = user ? user.points : 0;
+
+    // 2. Thực hiện Aggregation Pipeline
+    const stats = await this.bookingModel.aggregate([
+      {
+        $match: {
+          userId: userId,
+          isDeleted: false,
+          // Chỉ lấy dữ liệu trong khoảng thời gian đã chọn (hoặc bỏ dòng này nếu muốn tính all time cho overview)
+          bookDate: { $gte: startDate, $lte: now }
+        }
+      },
+      {
+        $facet: {
+          // --- A. TỔNG QUAN (Overview) ---
+          overview: [
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                completed: {
+                  $sum: { $cond: [{ $eq: ['$bookingStatus', BookingStatus.CONFIRMED] }, 1, 0] }
+                },
+                cancelled: {
+                  $sum: { $cond: [{ $eq: ['$bookingStatus', BookingStatus.CANCELLED] }, 1, 0] }
+                }
+              }
+            }
+          ],
+
+          // --- B. BIỂU ĐỒ THEO THÁNG (Chart) ---
+          monthly: [
+            {
+              $group: {
+                _id: { month: { $month: '$bookDate' }, status: '$bookingStatus' },
+                count: { $sum: 1 }
+              }
+            }
+          ],
+
+          // --- C. CƠ SỞ HAY ĐẶT (Frequent Centers) ---
+          frequentCenters: [
+            {
+              $group: {
+                _id: '$centerId',
+                count: { $sum: 1 },
+                lastBooking: { $max: '$bookDate' }
+              }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 5 },
+            // Lookup sang collection centers để lấy tên (Giả sử collection tên là 'centers')
+            {
+              $lookup: {
+                from: 'centers',
+                localField: '_id',
+                foreignField: 'centerId',
+                as: 'centerInfo'
+              }
+            },
+            { $unwind: { path: '$centerInfo', preserveNullAndEmptyArrays: true } },
+            {
+              $project: {
+                centerId: '$_id',
+                centerName: { $ifNull: ['$centerInfo.name', 'Unknown Center'] },
+                bookingCount: '$count'
+              }
+            }
+          ],
+
+          // --- D. KHUNG GIỜ PHỔ BIẾN (Time Slots) ---
+          // Chỉ tính các đơn đã hoàn thành để chính xác
+          timeDistribution: [
+            { $match: { bookingStatus: BookingStatus.CONFIRMED } },
+            { $unwind: '$courtBookingDetails' }, // Bung mảng chi tiết sân
+            { $unwind: '$courtBookingDetails.timeslots' }, // Bung mảng giờ
+            {
+              $group: {
+                _id: '$courtBookingDetails.timeslots', // Group theo giờ (5, 6... 18, 19)
+                count: { $sum: 1 }
+              }
+            },
+            { $sort: { count: -1 } } // Sắp xếp giờ nào đặt nhiều nhất lên đầu
+          ]
+        }
+      }
+    ]);
+
+    const result = stats[0];
+    const overviewData = result.overview[0] || { total: 0, completed: 0, cancelled: 0 };
+
+    // 3. Xử lý hậu kỳ dữ liệu (Post-processing)
+
+    // Xử lý dữ liệu biểu đồ (Map ra 12 tháng hoặc range tùy ý)
+    const processedMonthly = this.processMonthlyStats(result.monthly);
+
+    // Xử lý dữ liệu Giờ (Tính %)
+    const timeStats = this.processTimeStats(result.timeDistribution);
+
+    // Xử lý so sánh tăng giảm (Giả lập logic, hoặc cần query thêm kỳ trước để tính)
+    const comparison = {
+      totalChange: 12, // Ví dụ: hardcode hoặc tính toán thật
+      completedChange: 5,
+      cancelledChange: -2,
+      pointsChange: 10
+    };
+
+    return {
+      overview: {
+        totalBookings: overviewData.total,
+        completedBookings: overviewData.completed,
+        cancelledBookings: overviewData.cancelled,
+        totalPoints: currentPoints,
+        completionRate: overviewData.total > 0 ? Math.round((overviewData.completed / overviewData.total) * 100) : 0
+      },
+      comparison,
+      monthlyStats: processedMonthly,
+      frequentCenters: result.frequentCenters,
+      timeStats // Trả về object đã tính toán %
+    };
+  }
+
+  // --- Helper: Xử lý Time Distribution ---
+  private processTimeStats(data: any[]) {
+    const totalSlots = data.reduce((sum, item) => sum + item.count, 0);
+
+    const distribution = { Sáng: 0, Trưa: 0, Chiều: 0, Tối: 0 };
+
+    data.forEach(item => {
+      const h = item._id; // Giờ (number)
+      const c = item.count;
+      if (h >= 5 && h <= 11) distribution.Sáng += c;
+      else if (h >= 12 && h <= 13) distribution.Trưa += c;
+      else if (h >= 14 && h <= 17) distribution.Chiều += c;
+      else distribution.Tối += c;
+    });
+
+    // Tìm giờ phổ biến nhất
+    const mostPopular = data.length > 0 ? data[0] : null;
+
+    return {
+      percentages: {
+        Sáng: totalSlots ? Math.round((distribution.Sáng / totalSlots) * 100) : 0,
+        Trưa: totalSlots ? Math.round((distribution.Trưa / totalSlots) * 100) : 0,
+        Chiều: totalSlots ? Math.round((distribution.Chiều / totalSlots) * 100) : 0,
+        Tối: totalSlots ? Math.round((distribution.Tối / totalSlots) * 100) : 0,
+      },
+      popularTimeRange: mostPopular ? `${mostPopular._id}:00 - ${mostPopular._id + 1}:00` : "Chưa có dữ liệu",
+      popularCount: mostPopular ? mostPopular.count : 0
+    };
+  }
+
+  // --- Helper: Map Monthly Data ---
+  private processMonthlyStats(data: any[]) {
+    // Logic map array mongo result sang mảng chuẩn UI (VD: T1 -> T12)
+    // Code rút gọn cho ví dụ:
+    const map = new Map();
+    data.forEach(item => {
+      const key = item._id.month;
+      if (!map.has(key)) map.set(key, { month: key, completed: 0, cancelled: 0 });
+      const entry = map.get(key);
+      if (item._id.status === BookingStatus.CONFIRMED) entry.completed = item.count;
+      if (item._id.status === BookingStatus.CANCELLED) entry.cancelled = item.count;
+    });
+    return Array.from(map.values()).sort((a: any, b: any) => a.month - b.month);
   }
 }

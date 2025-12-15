@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import '../styles/login.css';
 import { loginUser } from '../apiV2/auth_service/auth.api.js';
 import { loginWithGoogle } from '../apiV2/auth_service/oauth2.0/google_login.api.js';
+// 💡 CẬP NHẬT: Import thêm forgotPasswordApi từ đúng đường dẫn apiV2
 import { registerUser } from '../apiV2/auth_service/rest/users.api.js';
+import { forgotPasswordApi } from '../apiV2/auth_service/auth.api.js';
 import { AuthContext } from '../contexts/AuthContext.jsx';
-import { forgotPasswordByEmailSimpleApi } from '../apis/users';
+
+// ❌ Đã xóa dòng import cũ: import { forgotPasswordByEmailSimpleApi } from '../apis/users';
 
 const CLIENT_ID = import.meta.env.VITE_CLIENT_ID || 'user-app';
 console.log("[Login.jsx] Sử dụng CLIENT_ID =", CLIENT_ID);
@@ -22,7 +25,7 @@ const LoginModal = ({ isOpen, onClose }) => {
   const [loginError, setLoginError] = useState(''); 
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   
-  // 💡 1. THÊM STATE ĐỂ ẨN/HIỆN MẬT KHẨU ĐĂNG NHẬP
+  // State ẩn/hiện mật khẩu đăng nhập
   const [showLoginPassword, setShowLoginPassword] = useState(false);
 
   // State cho form đăng ký
@@ -151,12 +154,14 @@ const LoginModal = ({ isOpen, onClose }) => {
     }
   };
 
+  // 💡 CẬP NHẬT: Sử dụng forgotPasswordApi mới
   const handleForgotSubmit = async (e) => {
     e.preventDefault();
     setForgotMessage('');
     setIsForgotLoading(true);
     try {
-      const result = await forgotPasswordByEmailSimpleApi(forgotEmail);
+      // Gọi API mới từ auth_service
+      const result = await forgotPasswordApi(forgotEmail);
       setForgotMessage(result.message);
     } catch (error) {
       console.error("Lỗi khi lấy lại mật khẩu:", error);
@@ -216,18 +221,16 @@ const LoginModal = ({ isOpen, onClose }) => {
                 <i className="bx bxs-user"></i>
               </div>
               
-              {/* 💡 2. CẬP NHẬT INPUT BOX MẬT KHẨU VỚI ICON CON MẮT */}
               <div className="input-box">
                 <input
                   id="login-password"
-                  type={showLoginPassword ? "text" : "password"} // Thay đổi type dựa trên state
+                  type={showLoginPassword ? "text" : "password"}
                   placeholder="Nhập mật khẩu"
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                 />
                 <i className="bx bxs-lock-alt"></i>
                 
-                {/* Nút ẩn hiện mật khẩu */}
                 <span
                   id="toggle-login-password-btn"
                   className="toggle-pw"
@@ -258,13 +261,13 @@ const LoginModal = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {/* FORM QUÊN MẬT KHẨU (Giữ nguyên) */}
+        {/* FORM QUÊN MẬT KHẨU */}
         {activeMode === "forgot" && (
           <div className="form-box forgot">
             <form onSubmit={handleForgotSubmit} noValidate>
               <h1>Quên mật khẩu</h1>
               {forgotMessage && (
-                forgotMessage.includes('thành công') ? 
+                forgotMessage.includes('hướng dẫn') || forgotMessage.includes('thành công') ? 
                   <p id="forgot-success-message" className="info-message">{forgotMessage}</p> :
                   <p id="forgot-error-message" className="error-message">{forgotMessage}</p>
               )}
@@ -280,13 +283,13 @@ const LoginModal = ({ isOpen, onClose }) => {
                 <i className="bx bxs-envelope"></i>
               </div>
               <button id="forgot-submit" type="submit" className="btn" disabled={isForgotLoading}>
-                {isLoginLoading ? <i className="fas fa-spinner fa-spin"></i> : 'Gửi yêu cầu'}
+                {isForgotLoading ? <i className="fas fa-spinner fa-spin"></i> : 'Gửi yêu cầu'}
               </button>
             </form>
           </div>
         )}
 
-        {/* FORM ĐĂNG KÝ (Giữ nguyên) */}
+        {/* FORM ĐĂNG KÝ */}
         {(activeMode === "register" || activeMode === "registerSuccess") && (
           <div className="form-box register" style={{ overflow: 'auto' }}>
             <form onSubmit={handleSignupSubmit} noValidate>
@@ -299,7 +302,6 @@ const LoginModal = ({ isOpen, onClose }) => {
                 </div>
               )}
               <div className={`form-content ${isLoading || !isFormReady ? 'hidden' : ''}`}>
-                {/* ... (Các trường input đăng ký giữ nguyên) ... */}
                 <div className={`input-box ${fieldErrors.name ? 'invalid' : signupData.name.trim() ? 'valid' : ''}`}>
                   <input
                     id="signup-name"
@@ -313,6 +315,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                   <i className="bx bxs-user"></i>
                 </div>
                 {fieldErrors.name && <p id="field-error-name" className="field-error">{fieldErrors.name}</p>}
+                
                 <div className={`input-box ${fieldErrors.email ? 'invalid' : signupData.email.trim() ? 'valid' : ''}`}>
                   <input
                     id="signup-email"
@@ -326,6 +329,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                   <i className="bx bxs-envelope"></i>
                 </div>
                 {fieldErrors.email && <p id="field-error-email" className="field-error">{fieldErrors.email}</p>}
+                
                 <div className={`input-box ${fieldErrors.phone_number ? 'invalid' : signupData.phone_number.trim() ? 'valid' : ''}`}>
                   <input
                     id="signup-phone"
@@ -339,6 +343,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                   <i className="bx bxs-phone"></i>
                 </div>
                 {fieldErrors.phone_number && <p id="field-error-phone_number" className="field-error">{fieldErrors.phone_number}</p>}
+                
                 <div className={`input-box ${fieldErrors.username ? 'invalid' : signupData.username.trim() ? 'valid' : ''}`}>
                   <input
                     id="signup-username"
@@ -352,6 +357,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                   <i className="bx bxs-user"></i>
                 </div>
                 {fieldErrors.username && <p id="field-error-username" className="field-error">{fieldErrors.username}</p>}
+                
                 <div className={`input-box ${fieldErrors.password ? 'invalid' : signupData.password ? 'valid' : ''}`}>
                   <input
                     id="signup-password"
@@ -373,6 +379,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                   </span>
                 </div>
                 {fieldErrors.password && <p id="field-error-password" className="field-error">{fieldErrors.password}</p>}
+                
                 <div className={`input-box ${fieldErrors.confirmPassword ? 'invalid' : signupData.confirmPassword ? 'valid' : ''}`}>
                   <input
                     id="signup-confirm-password"
@@ -394,6 +401,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                   </span>
                 </div>
                 {fieldErrors.confirmPassword && <p id="field-error-confirmPassword" className="field-error">{fieldErrors.confirmPassword}</p>}
+                
                 <button
                   id="signup-submit"
                   type="submit"
@@ -401,7 +409,7 @@ const LoginModal = ({ isOpen, onClose }) => {
                   disabled={isLoading || !isFormReady}
                 >
                   {isLoading ? <i className="fas fa-spinner fa-spin"></i> : 'Đăng ký'}
-               </button>
+                </button>
                 <p className="social-text">Đăng ký khác</p>
                 <div className="social-icons">
                   <a id="facebook-signup-btn" href="/auth/facebook" className="social-icon facebook">
@@ -416,7 +424,7 @@ const LoginModal = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {/* TOGGLE BOX (Giữ nguyên) */}
+        {/* TOGGLE BOX */}
         <div className="toggle-box">
           <div className="toggle-panel toggle-left">
             {activeMode === "login" && (

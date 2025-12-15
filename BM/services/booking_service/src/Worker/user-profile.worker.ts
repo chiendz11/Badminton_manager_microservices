@@ -31,7 +31,7 @@ export class UserWorker {
                 return;
             }
             
-            const userProfile = message.payload.savedProfile;
+            const userProfile = message.payload;
             const createUser = {
                 userId: userProfile.userId,
                 points: userProfile.points || 0,

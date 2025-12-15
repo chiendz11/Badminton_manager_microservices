@@ -2,10 +2,10 @@ import axios from "axios";
 // Đảm bảo file token.api.js này KHÔNG import axiosInstance từ đây (tránh circular dependency)
 import { refreshTokenApi } from "../apiV2/auth_service/token.api.js";
 
-// 💡 SỬA LỖI: Thêm fallback. Nếu không tìm thấy biến env, mặc định dùng http://localhost
+// Fallback URL nếu biến môi trường chưa load kịp
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost";
 
-console.log("Axios Base URL:", API_URL); // Log ra để kiểm tra
+console.log("Axios Base URL:", API_URL);
 
 let accessToken = null;
 
@@ -57,12 +57,26 @@ axiosInstance.interceptors.response.use(
              return Promise.reject(error);
         }
 
-        // 1. Chặn loop: Nếu URL là refresh token hoặc login thì không retry
-        if (originalRequest.url.includes('/auth/refresh') || originalRequest.url.includes('/auth/login')) {
+        // 💡 BEST PRACTICE: Whitelist (Danh sách API Công khai)
+        // Những API này KHÔNG BAO GIỜ được kích hoạt cơ chế Auto-Refresh Token
+        // Vì nếu nó lỗi (401/400), nghĩa là sai logic/input, không phải do hết phiên.
+        const PUBLIC_APIS = [
+            '/api/auth/login',           // Đăng nhập sai pass -> 401 -> Báo lỗi đỏ
+            '/api/auth/refresh-token',   // Refresh lỗi -> 401 -> Logout
+            '/api/auth/forgot-password', // Quên mật khẩu
+            '/api/auth/reset-password',  // Đặt lại mật khẩu (Token reset sai) -> 401 -> Báo lỗi đỏ
+            '/api/auth/verify-user'      // Xác thực email
+        ];
+
+        // Kiểm tra xem URL hiện tại có nằm trong whitelist không
+        const isPublicApi = PUBLIC_APIS.some(api => originalRequest.url.includes(api));
+        
+        // Nếu là API công khai mà bị lỗi -> Trả về lỗi ngay lập tức cho Component
+        if (isPublicApi) {
             return Promise.reject(error);
         }
 
-        // 2. Xử lý 401 (Unauthorized)
+        // --- Logic Refresh Token cho các API Private ---
         if (error.response?.status === 401 && !originalRequest._retry) {
             
             if (isRefreshing) {
@@ -86,10 +100,10 @@ axiosInstance.interceptors.response.use(
                 
                 setAccessToken(newToken);
                 
-                // Xử lý hàng đợi
+                // Xử lý hàng đợi các request đang chờ
                 processQueue(null, newToken);
                 
-                // Gọi lại request hiện tại
+                // Gọi lại request hiện tại với token mới
                 originalRequest.headers.Authorization = `Bearer ${newToken}`;
                 return axiosInstance(originalRequest);
 
@@ -97,8 +111,8 @@ axiosInstance.interceptors.response.use(
                 processQueue(refreshError, null);
                 setAccessToken(null);
                 
-                // Điều hướng về trang login nếu cần
-                // window.location.href = '/login';
+                // Lưu ý: Không redirect window.location ở đây để tránh UX xấu
+                // AuthContext sẽ tự động nhận biết state user null
                 
                 return Promise.reject(refreshError);
             } finally {

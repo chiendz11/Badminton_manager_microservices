@@ -57,6 +57,20 @@ router.get("/booking/pending/mapping",
     bookingProxy
 );
 
+router.patch("/booking/:bookingId", 
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy);
+
+   
+router.delete("/booking/:bookingId", 
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy);
 // 2. POST /api/booking/pending/pendingBookingToDB
 // Chức năng: User xác nhận đặt sân (Check-and-Lock)
 // Quyền: Chỉ User mới được đặt sân (hoặc Manager đặt hộ)
@@ -84,6 +98,14 @@ router.post("/booking/payment/create-link",
     authorize([
         GATEWAY_ROLES.USER,
         GATEWAY_ROLES.CENTER_MANAGER
+    ]),
+    bookingProxy
+);
+
+router.get("/user/me/statistics",
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.USER
     ]),
     bookingProxy
 );

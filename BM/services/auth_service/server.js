@@ -2,13 +2,14 @@ import express from "express";
 import mainRouter from "./src/routes/index.route.js";
 import { PORT } from "./src/configs/env.config.js"; 
 import helmet from "helmet";
-import { jobRouter } from './src/routes/job.route.js';
 // 💡 1. IMPORT COOKIE-PARSER
 import cookieParser from "cookie-parser";
 
 // 1. IMPORT HÀM KẾT NỐI TỪ PRISMA.JS
 import { connectAndLog } from "./src/prisma.js";
 import { initRabbitMQ } from "./src/clients/rabbitmq.client.js";
+import { connectRedis } from './src/clients/redis.client.js';
+import { CronService } from './src/services/cron.service.js'; // 👈 IMPORT MỚI
 
 const app = express();
 const AUTH_PORT = PORT; 
@@ -23,7 +24,6 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use("/api", mainRouter); // Sử dụng mainRouter (từ index.routes.js)
-app.use('/internal/jobs', jobRouter);
 
 // Health check
 app.get("/", (req, res) => {
@@ -42,6 +42,9 @@ async function startServer() {
         // 3. CHỜ KẾT NỐI DATABASE THÀNH CÔNG TRƯỚC
         await connectAndLog();
         await initRabbitMQ(); // Khởi tạo kết nối RabbitMQ
+        await connectRedis(); // Kết nối Redis
+
+        CronService.startCleanupJob(); // 👈 KHỞI ĐỘNG CRON JOBS
 
         // 4. SAU KHI DB SẴN SÀNG, MỚI BẮT ĐẦU LẮNG NGHE
         const server = app.listen(AUTH_PORT, () => {

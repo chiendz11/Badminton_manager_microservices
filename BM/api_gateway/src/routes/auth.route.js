@@ -23,32 +23,24 @@ const authProxy = proxy(AUTH_SERVICE_URL, {
     },
 });
 
+// -----------------------------------------------------------------
+// Định tuyến (Routes) cho Users
+// -----------------------------------------------------------------
 router.post("/users", authProxy); // Đăng ký người dùng
 
-// 💡 ROUTE MỚI: TẠO CENTER MANAGER (CHỈ ADMIN MỚI ĐƯỢC PHÉP)
-router.post("/admin/users", 
-  authenticate, // 1. Xác thực người dùng (login)
-  // 2. Ủy quyền: Chỉ cho phép SUPER_ADMIN hoặc ADMIN tạo manager
-  authorize([GATEWAY_ROLES.SUPER_ADMIN]), 
-  authProxy);
+router.put("/users/:userId/password",
+    authenticate, 
+    authorize([GATEWAY_ROLES.SUPER_ADMIN]), // Phân quyền Admin
+    authProxy);
 
 router.patch("/users/:userId/status", // Cập nhật trạng thái kích hoạt người dùng
   authenticate, // Yêu cầu đăng nhập
   // 💡 SỬA LỖI: Cập nhật mảng vai trò
   authorize([GATEWAY_ROLES.SUPER_ADMIN]), 
   authProxy); // Proxy người dùng
-
-router.post("/auth/login", authProxy); // Đăng nhập người dùng
-router.post("/auth/refresh-token", authProxy); // Làm mới token người dùng
-router.get("/auth/verify-user/:token", authProxy); // Xác minh email người dùng
-
-router.delete("/auth/logout", // Đăng xuất người dùng
-  authenticate, // Xác thực người dùng
-  // 💡 SỬA LỖI: Cập nhật mảng vai trò
-  authorize([GATEWAY_ROLES.USER, GATEWAY_ROLES.CENTER_MANAGER, GATEWAY_ROLES.SUPER_ADMIN]), 
-  authProxy); // Proxy người dùng
-
+// 💡 ROUTE MỚI: TẠO CENTER MANAGER (CHỈ ADMIN MỚI ĐƯỢC PHÉP)
 // 💡 ROUTE MỚI: ĐỔI MẬT KHẨU
+
 router.put("/users/me/password",
   authenticate, // 1. Yêu cầu đăng nhập
   authorize([ // 2. Yêu cầu có vai trò hợp lệ
@@ -59,10 +51,29 @@ router.put("/users/me/password",
   authProxy // 3. Chuyển tiếp đến AuthService
 );
 
-router.put("/users/:userId/password",
-    authenticate, 
-    authorize([GATEWAY_ROLES.SUPER_ADMIN]), // Phân quyền Admin
-    authProxy);
+router.post("/admin/users", 
+  authenticate, // 1. Xác thực người dùng (login)
+  // 2. Ủy quyền: Chỉ cho phép SUPER_ADMIN hoặc ADMIN tạo manager
+  authorize([GATEWAY_ROLES.SUPER_ADMIN]), 
+  authProxy);
+
+
+// -----------------------------------------------------------------
+// Định tuyến (Routes) cho Authentication
+// -----------------------------------------------------------------
+router.post("/auth/login", authProxy); // Đăng nhập người dùng
+router.post("/auth/refresh-token", authProxy); // Làm mới token người dùng
+router.get("/auth/verify-user/:token", authProxy); // Xác minh email người dùng
+
+router.delete("/auth/logout", // Đăng xuất người dùng
+  authenticate, // Xác thực người dùng
+  // 💡 SỬA LỖI: Cập nhật mảng vai trò
+  authorize([GATEWAY_ROLES.USER, GATEWAY_ROLES.CENTER_MANAGER, GATEWAY_ROLES.SUPER_ADMIN]), 
+  authProxy); // Proxy người dùng
+
+router.post("/auth/forgot-password", authProxy);
+router.post("/auth/reset-password", authProxy); // 💡 ROUTE MỚI: Đặt lại mật khẩu từ link email
+
 
 
 // ... (Các route Google không đổi) ...

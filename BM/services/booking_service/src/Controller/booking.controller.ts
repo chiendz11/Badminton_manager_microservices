@@ -66,26 +66,14 @@ export class BookingController {
     }
   }
 
-  @Get()
-  async findAll() {
-    return this.bookingService.findAllBookings();
-  }
-
-  @Get('api/:id/status')
-  async findOne(@Param('id') id: string) {
-    const booking = await this.bookingService.findBookingById(id);
-    if (!booking) throw new NotFoundException('Booking not found');
-    return booking.bookingStatus;
-  }
-
-  @Get('booking/:userId')
+  @Get('/booking/:userId')
   async findByUser(@Param('userId') userId: string) {
     return this.bookingService.findAllBookingsByUserId(userId);
   }
 
-  @Patch('booking/:id')
+  @Patch('/api/:bookingId')
   async updateStatus(
-    @Param('id') id: string,
+    @Param('bookingId') id: string,
     @Body('status') status: BookingStatus
   ) {
     const updated = await this.bookingService.updateBookingStatus(id, status);
@@ -96,8 +84,8 @@ export class BookingController {
     }
   }
 
-  @Delete('booking/:id')
-  async remove(@Param('id') id: string) {
+  @Delete('/api/:bookingId')
+  async remove(@Param('bookingId') id: string) {
     const deleted = await this.bookingService.deleteBooking(id);
     if (!deleted) throw new NotFoundException('Booking not found');
     return { message: 'Booking deleted successfully', id };
@@ -110,5 +98,19 @@ export class BookingController {
   ) {
     // Gọi sang Service với userId và object query đầy đủ
     return this.bookingService.getUserBookingHistory(userId, query);
+  }
+
+  @Get('/api/user/me/statistics')
+  @UseGuards(GatewayAuthGuard)
+  // @UseGuards(GatewayAuthGuard)
+  async getMyStats(@Req() req: any, @Query('period') period: string) {
+    // Nếu đi qua Gateway đã decode token, dùng userId từ req.user
+    // Nếu test trực tiếp, dùng query param
+    const userId = req.user?.userId;
+
+    // Validate period
+    const validPeriod = ['week', 'month', 'year'].includes(period) ? period : 'month';
+    
+    return await this.bookingService.getUserStatistics(userId, validPeriod as any);
   }
 }

@@ -82,10 +82,10 @@ export const checkPaymentStatus = async (orderCode) => {
 
 
 // Hàm hủy booking (nếu chưa có)
-export const cancelBookingAPI = async (bookingId) => {
-    // Giả sử bạn có endpoint update status
-    // return axiosInstance.patch(`/api/booking/${bookingId}`, { status: 'cancelled' });
-    // Hoặc endpoint delete nếu xóa cứng
-     return axiosInstance.delete(`/api/booking/${bookingId}`);
+export const cancelBooking = async (bookingId) => {
+    return axiosInstance.patch(`/api/booking/${bookingId}`, { status: "cancelled" });
 }
 
+export const deleteBooking = async (bookingId) => {
+    return axiosInstance.delete(`/api/booking/${bookingId}`);
+}

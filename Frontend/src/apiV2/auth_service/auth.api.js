@@ -34,4 +34,39 @@ export const logoutUser = async () => {
   }
 };
 
+/**
+ * 💡 MỚI: Yêu cầu lấy lại mật khẩu (Gửi email - Forgot Flow)
+ * Endpoint này map với AuthController.forgotPassword (POST /api/auth/forgot-password)
+ * @param {string} email - Email của người dùng
+ */
+export const forgotPasswordApi = async (email) => {
+    try {
+        const response = await axiosInstance.post('/api/auth/forgot-password', { email });
+        console.log("Forgot password request sent:", response.data);
+        return response.data;
+    } catch (error) {
+        // Backend luôn trả về 200 để bảo mật, nên lỗi ở đây thường là lỗi mạng hoặc 500
+        console.error("Error requesting password reset:", error.response?.data || error.message);
+        throw error;
+    }
+};
+
+/**
+ * 💡 MỚI: Đặt lại mật khẩu (Từ Link Email - Reset Flow)
+ * Endpoint này map với AuthController.resetPassword (POST /api/auth/reset-password)
+ */
+export const resetPasswordApi = async (token, userId, newPassword) => {
+    try {
+        const response = await axiosInstance.post('/api/auth/reset-password', {
+            token,
+            userId,
+            newPassword,
+            confirmPassword: newPassword 
+        });
+        return response.data;
+    } catch (error) {
+        throw error;
+    }
+};
+
 

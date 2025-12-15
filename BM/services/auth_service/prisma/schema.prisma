@@ -35,7 +35,6 @@ model User {
   externalIdentities    ExternalIdentity[]
   sessions              Session[]
   refreshTokens         RefreshToken[]
-  verificationTokens    VerificationToken[]
 }
 
 model Session {
@@ -75,17 +74,7 @@ model ExternalIdentity {
   @@unique([providerName, providerUserId])
 }
 
-model VerificationToken {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-
-  @@unique([userId, token])
-}
 
 model AuthClient {
   id           String   @id @default(uuid()) @db.Uuid

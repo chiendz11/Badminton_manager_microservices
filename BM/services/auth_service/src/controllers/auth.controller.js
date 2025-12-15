@@ -365,5 +365,77 @@ export const AuthController = {
                 message: error.message || "Internal Server Error" 
             });
         }
-    }
+    },
+
+    /**
+     * 💡 [HÀM MỚI] POST /forgot-password
+     */
+    forgotPassword: async (req, res, next) => {
+        try {
+            const { email } = req.body;
+            await AuthService.forgotPassword(email);
+            
+            // Luôn trả về 200 message chung chung để bảo mật
+            res.status(200).json({ 
+                message: "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu." 
+            });
+        } catch (error) {
+            // Log lỗi thật ở server
+            console.error("[AuthController] Forgot Password Error:", error);
+            // Vẫn trả về success cho client
+            res.status(200).json({ 
+                message: "Nếu email tồn tại trong hệ thống, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu." 
+            });
+        }
+    },
+
+    /**
+     * 💡 [SỬA HÀM] POST /reset-password
+     * Đổi tên từ changePassword (cũ/sai) hoặc thêm mới nếu chưa có
+     */
+    /**
+     * 💡 [ĐÃ SỬA] POST /reset-password
+     * Đặt lại mật khẩu (Public Route - Không dùng Header x-user-id)
+     */
+    resetPassword: async (req, res, next) => {
+        try {
+            // 💡 SỬA LỖI TẠI ĐÂY:
+            // Vì là Public Route, Gateway KHÔNG gán header x-user-id.
+            // Ta phải lấy userId từ body (do Frontend gửi lên: { token, userId, newPassword })
+            const { token, userId, newPassword } = req.body;
+
+            // Kiểm tra đầu vào cơ bản (Dù Joi đã validate, check lại cho chắc cũng không sao)
+            if (!token || !userId || !newPassword) {
+                return res.status(400).json({ 
+                    message: "Thiếu thông tin bắt buộc (token, userId, hoặc mật khẩu mới)." 
+                });
+            }
+
+            // Gọi Service
+            await AuthService.resetPassword(userId, token, newPassword);
+
+            res.status(200).json({ 
+                success: true,
+                message: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại." 
+            });
+        } catch (error) {
+            console.error("[AuthController] Reset Password Error:", error);
+
+            // 💡 QUAN TRỌNG: Trả về 400 (Bad Request) thay vì 401/500
+            // Để Frontend hiển thị thông báo lỗi đỏ ngay lập tức,
+            // tránh kích hoạt cơ chế Auto-Refresh Token gây vòng lặp.
+            
+            // Nếu là lỗi nghiệp vụ từ Service ném ra
+            if (error.message === "INVALID_TOKEN" || error.message === "INVALID_USER" || error.message.includes("hết hạn")) {
+                return res.status(400).json({ 
+                    message: "Link đặt lại mật khẩu không hợp lệ hoặc đã hết hạn." 
+                });
+            }
+
+            // Các lỗi khác
+            res.status(400).json({ 
+                message: "Không thể đặt lại mật khẩu. Vui lòng thử lại sau." 
+            });
+        }
+    },
 };
