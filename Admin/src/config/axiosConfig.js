@@ -3,6 +3,7 @@ import axios from "axios";
 import { refreshTokenApi } from "../apiV2/auth_service/token.api.js"; 
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:8080";
+const CLIENT_ID = import.meta.env.VITE_CLIENT_ID;
 
 let accessToken = null;
 
@@ -19,6 +20,10 @@ axiosInstance.interceptors.request.use(
     (config) => {
         if (accessToken) {
             config.headers.Authorization = `Bearer ${accessToken}`;
+        }
+
+        if (CLIENT_ID) {
+            config.headers['x-client-id'] = CLIENT_ID;
         }
         return config;
     },

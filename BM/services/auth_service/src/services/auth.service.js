@@ -20,7 +20,7 @@ import redisClient from '../clients/redis.client.js';
 
 const SALT_ROUNDS = 10;
 // Thời gian hết hạn của link xác thực email (24 giờ tính bằng giây)
-const VERIFY_EMAIL_TTL = 86400; 
+const VERIFY_EMAIL_TTL = 86400;
 
 export const AuthService = {
     registerUser: async (data) => {
@@ -28,7 +28,7 @@ export const AuthService = {
 
         let newUser = null;
         // Khai báo token ở đây để catch block có thể truy cập nếu muốn xóa (tùy chọn)
-        let verificationToken = null; 
+        let verificationToken = null;
 
         try {
             // --- BƯỚC 1: TẠO USER TRONG AUTH SERVICE (PG) ---
@@ -41,7 +41,7 @@ export const AuthService = {
                 },
                 select: { id: true, email: true, username: true, role: true, createdAt: true, isVerified: true }
             });
-            
+
             // 💡 BƯỚC 1.1: TẠO VÀ CẬP NHẬT publicUserId
             const publicUserId = `USER-${newUser.id}`;
 
@@ -54,7 +54,7 @@ export const AuthService = {
 
             // --- BƯỚC 2: GỌI SANG USER SERVICE (MONGO) ĐỂ TẠO PROFILE ---
             const profileData = {
-                userId: newUser.publicUserId, 
+                userId: newUser.publicUserId,
                 name: data.name,
                 phone_number: data.phone_number,
                 role: newUser.role,
@@ -66,20 +66,20 @@ export const AuthService = {
 
             // --- BƯỚC 3: TẠO VERIFICATION TOKEN VÀO REDIS 🟢 ---
             verificationToken = uuidv4();
-            
+
             // Key: "VERIFY_EMAIL:<uuid>" -> Value: "userId"
             // Tự động hủy sau 24h
             await redisClient.set(
-                `VERIFY_EMAIL:${verificationToken}`, 
-                newUser.id, 
+                `VERIFY_EMAIL:${verificationToken}`,
+                newUser.id,
                 { EX: VERIFY_EMAIL_TTL }
             );
 
             // --- BƯỚC 4: GỬI EMAIL ---
             await EmailService.sendVerificationEmail(newUser.email, verificationToken);
 
-            return { ...newUser, publicUserId }; 
-            
+            return { ...newUser, publicUserId };
+
         } catch (error) {
             // --- LOGIC ROLLBACK ---
             if (newUser && newUser.id) {
@@ -108,76 +108,81 @@ export const AuthService = {
         }
     },
 
+    /**
+     * 🟢 CẬP NHẬT: Thêm logic AuthClient
+     */
     authenticateUser: async (identifier, password, clientId, req) => {
+        // 1. Tìm Client trong DB
+        const clientApp = await prisma.authClient.findUnique({
+            where: { clientId: clientId }
+        });
+
+        if (!clientApp || !clientApp.isActive) {
+            const error = new Error("Client application not identified or disabled.");
+            throw Object.assign(error, { statusCode: 401 });
+        }
+
+        // 2. Tìm User
         let user;
         const isEmail = isEmailFormat(identifier);
-        
-        // 1. Tìm User
         if (isEmail) {
             user = await prisma.user.findUnique({ where: { email: identifier } });
         } else {
             user = await prisma.user.findUnique({ where: { username: identifier } });
         }
 
-        // 2. Kiểm tra User tồn tại, Khóa, Active
         if (!user || !user.passwordHash) {
             const error = new Error("Thông tin đăng nhập không chính xác.");
             throw Object.assign(error, { statusCode: 400 });
         }
-        if (user.lockoutUntil && isPast(user.lockoutUntil)) {
-            await LoginService.handleSuccessfulLogin(user.id);
-        } else if (user.lockoutUntil && !isPast(user.lockoutUntil)) {
-            const error = new Error("Tài khoản của bạn đang bị khóa tạm thời.");
+
+        // 3. Security Check: Client-Role Guard
+        // Ví dụ: User thường không được vào App Admin (nếu App Admin quy định allowedRoles)
+        if (clientApp.allowedRoles && clientApp.allowedRoles.length > 0) {
+            if (!clientApp.allowedRoles.includes(user.role)) {
+                const error = new Error(`Access Denied: Role ${user.role} cannot access ${clientApp.name}`);
+                throw Object.assign(error, { statusCode: 403 });
+            }
+        }
+
+        // 4. Các check User status (Khóa, Active, Verified...)
+        if (user.lockoutUntil && !isPast(user.lockoutUntil)) {
+            const error = new Error("Tài khoản đang bị khóa tạm thời.");
             throw Object.assign(error, { statusCode: 403 });
         }
         if (!user.isActive) {
-            const error = new Error("Tài khoản của bạn đã bị vô hiệu hóa.");
+            const error = new Error("Tài khoản đã bị vô hiệu hóa.");
             throw Object.assign(error, { statusCode: 403 });
         }
-        
-        // 💡 Check Verified logic
         if (!user.isVerified) {
-            const error = new Error("Vui lòng xác minh email của bạn trước khi đăng nhập.");
+            const error = new Error("Vui lòng xác minh email trước khi đăng nhập.");
             throw Object.assign(error, { statusCode: 403 });
         }
 
-        // 3. So sánh mật khẩu
+        // 5. Check Password
         const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-
         if (!isPasswordValid) {
             await LoginService.handleFailedLoginAttempt(user.id);
             const error = new Error("Thông tin đăng nhập không chính xác.");
             throw Object.assign(error, { statusCode: 400 });
         }
 
-        // 4. Kiểm tra Client ID và Role
-        const client = await prisma.authClient.findUnique({
-            where: { clientId: clientId }
-        });
-
-        if (!client || !client.isActive) {
-            const error = new Error("Ứng dụng (Client) không hợp lệ.");
-            throw Object.assign(error, { statusCode: 401 });
-        }
-
-        if (!client.allowedRoles.includes(user.role)) {
-            const error = new Error("Tài khoản của bạn không có quyền truy cập ứng dụng này.");
-            throw Object.assign(error, { statusCode: 403 });
-        }
-
-        // 5. Đăng nhập thành công
+        // 6. Login thành công
         await LoginService.handleSuccessfulLogin(user.id);
 
-        // 6. Tạo Tokens và Session
+        // 7. Tạo Tokens
         const accessToken = TokenService.generateAccessToken(user);
-        const refreshToken = await TokenService.createAndStoreRefreshToken(user.id);
-        const sessionExpiresAt = add(new Date(), { days: 30 });
+
+        // 🟢 QUAN TRỌNG: Truyền authClientId (UUID) vào để lưu Token kèm Client
+        const refreshToken = await TokenService.createAndStoreRefreshToken(user.id, clientApp.id);
+
+        // 8. Lưu Session Log
         await prisma.session.create({
             data: {
                 userId: user.id,
                 ipAddress: req.ip || 'unknown',
                 userAgent: req.headers['user-agent'] || 'unknown',
-                expiresAt: sessionExpiresAt,
+                expiresAt: add(new Date(), { days: 30 }),
             }
         });
 
@@ -190,7 +195,7 @@ export const AuthService = {
                 email: user.email,
                 role: user.role,
                 isVerified: user.isVerified,
-                hasPassword: user.passwordHash !== null
+                hasPassword: true
             }
         };
     },
@@ -226,7 +231,7 @@ export const AuthService = {
 
     changePassword: async (publicUserId, oldPassword, newPassword) => {
         const user = await prisma.user.findUnique({
-            where: { publicUserId: publicUserId } 
+            where: { publicUserId: publicUserId }
         });
 
         if (!user) throw new Error("USER_NOT_FOUND");
@@ -239,11 +244,11 @@ export const AuthService = {
 
         await prisma.$transaction([
             prisma.user.update({
-                where: { id: user.id }, 
+                where: { id: user.id },
                 data: { passwordHash: newPasswordHash }
             }),
             prisma.refreshToken.deleteMany({
-                where: { userId: user.id } 
+                where: { userId: user.id }
             })
         ]);
 
@@ -265,7 +270,7 @@ export const AuthService = {
                     passwordHash,
                     role: Role.CENTER_MANAGER,
                     isActive: true,
-                    isVerified: true, 
+                    isVerified: true,
                 }
             });
 
@@ -277,9 +282,9 @@ export const AuthService = {
                 phone_number: data.phone_number,
                 role: Role.CENTER_MANAGER
             };
-            
+
             const newProfile = await UserService.createProfile(profileData);
-            
+
             return {
                 ...newAuthUser,
                 ...newProfile
@@ -288,8 +293,8 @@ export const AuthService = {
         } catch (error) {
             console.error("[AuthService] Lỗi createManager:", error);
             if (newAuthUser) {
-                 console.warn(`[AuthService] Rollback: Xóa Auth User ${newAuthUser.id}`);
-                 await prisma.user.delete({ where: { id: newAuthUser.id } });
+                console.warn(`[AuthService] Rollback: Xóa Auth User ${newAuthUser.id}`);
+                await prisma.user.delete({ where: { id: newAuthUser.id } });
             }
             throw error;
         }
@@ -297,23 +302,23 @@ export const AuthService = {
 
     adminResetPassword: async (publicUserId, newPassword) => {
         const user = await prisma.user.findUnique({
-            where: { publicUserId: publicUserId } 
+            where: { publicUserId: publicUserId }
         });
 
         if (!user) throw new Error("USER_NOT_FOUND");
-        
+
         const newPasswordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
         await prisma.$transaction([
             prisma.user.update({
-                where: { id: user.id }, 
+                where: { id: user.id },
                 data: { passwordHash: newPasswordHash }
             }),
             prisma.refreshToken.deleteMany({
                 where: { userId: user.id }
             })
         ]);
-        
+
         console.log(`[AuthService] ✅ Đặt lại mật khẩu thành công cho userId: ${publicUserId}`);
     },
 
@@ -321,10 +326,10 @@ export const AuthService = {
         try {
             const updatedUser = await prisma.user.update({
                 where: { publicUserId: userId },
-                data: { 
+                data: {
                     isActive: isActive,
                     ...(isActive === false && {
-                        refreshTokens: { deleteMany: {} } 
+                        refreshTokens: { deleteMany: {} }
                     })
                 }
             });
@@ -351,15 +356,15 @@ export const AuthService = {
 
     forgotPassword: async (email) => {
         const user = await prisma.user.findUnique({ where: { email } });
-        
-        if (!user) return; 
-        if (!user.passwordHash) return; 
+
+        if (!user) return;
+        if (!user.passwordHash) return;
 
         // Logic Stateless JWT cho Forgot Password (Không đổi)
         const secret = JWT_SECRET + user.passwordHash;
-        const payload = { 
-            id: user.id, 
-            publicUserId: user.publicUserId 
+        const payload = {
+            id: user.id,
+            publicUserId: user.publicUserId
         };
         const token = jwt.sign(payload, secret, { expiresIn: '15m' });
 
@@ -368,8 +373,8 @@ export const AuthService = {
     },
 
     resetPassword: async (publicUserId, token, newPassword) => {
-        const user = await prisma.user.findUnique({ 
-            where: { publicUserId: publicUserId } 
+        const user = await prisma.user.findUnique({
+            where: { publicUserId: publicUserId }
         });
 
         if (!user) throw new Error("Người dùng không tồn tại.");

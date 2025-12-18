@@ -28,3 +28,15 @@ export const getUserStatistics = async (params) => {
   }
 };
 
+export const checkMyExistsPendingBooking = async (centerId) => {
+  try {
+    const response = await axiosInstance.get(`/api/user/me/exists-pending-booking`, {
+      params: { centerId }
+    });
+    return response.data;
+  } catch (error) {
+    console.error("API Error:", error);
+    throw error;
+  }
+};
+

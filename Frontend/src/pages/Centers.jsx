@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import "../styles/centers.css";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
+import { checkMyExistsPendingBooking } from "../apiV2/booking_service/rest/user.api.js";
 
 import { getAllCentersGQL, getCenterInfoByIdGQL } from "../apiV2/center_service/grahql/center.api.js";
 import { AuthContext } from "../contexts/AuthContext";
@@ -108,15 +109,38 @@ const Centers = () => {
   }, []);
 
   const goToBooking = async (centerId) => {
+    // 1. CHECK ĐĂNG NHẬP
     if (!user || !user._id) {
       alert("Hãy đăng nhập hoặc đăng ký để đặt sân");
       setIsLoginModalOpen(true);
       return;
     }
+
+    // ============================================================
+    // 🛑 2. CHECK SPAM (SIMPLE VERSION)
+    // ============================================================
+    if (user.isSpamming) {
+      // Chỉ thông báo chung chung, không cần tính toán giờ
+      alert(
+        `🚫 TÀI KHOẢN TẠM KHÓA!\n\n` +
+        `Bạn đang bị chặn đặt sân do vi phạm chính sách "Giữ chỗ không thanh toán" nhiều lần.\n` +
+        `Vui lòng thử lại sau 30 phút.`
+      );
+      return; // ⛔ Dừng lại ngay, không cho đi tiếp
+    }
+    // ============================================================
+
     try {
-      const { exists } = true;
-      if (exists) {
-        alert("Bạn đã có booking pending cho trung tâm này. Vui lòng chờ hết 5 phút.");
+      // Logic kiểm tra Pending cũ của bạn
+      // (Lưu ý: đoạn này bạn đang hardcode true, nhớ sửa lại call API thật nhé)
+      const checkResult = await checkMyExistsPendingBooking(centerId);
+
+      if (checkResult && checkResult.exists) {
+        alert(
+          "⚠️ BẠN ĐANG CÓ ĐƠN GIỮ CHỖ!\n\n" +
+          "Bạn đã có một đơn đang chờ thanh toán tại trung tâm này.\n" +
+          "Vui lòng thanh toán hoặc chờ 5 phút để đơn tự hủy."
+        );
       } else {
         const centerInfo = await getCenterInfoByIdGQL(centerId);
 

@@ -2,37 +2,43 @@
 
 import { OAuthService } from '../services/oauth.service.js';
 import ms from 'ms';
-import { v4 as uuidv4 } from 'uuid';
 import { 
     NODE_ENV, 
-    FRONTEND_URL, 
+    FRONTEND_URL,         // Chỉ cần URL này
     REFRESH_TOKEN_EXPIRY 
-} from '../configs/env.config.js'; // (Hãy chắc chắn đường dẫn này đúng)
+} from '../configs/env.config.js';
 
 export const OAuthController = {
     /**
      * GET /google/login
-     * Bắt đầu luồng đăng nhập, chuyển hướng người dùng đến Google.
+     * Frontend gọi API này để lấy URL redirect sang Google
      */
     googleLogin: (req, res, next) => {
         try {
-            // 1. Tạo 'state' ngẫu nhiên để chống tấn công CSRF
-            const state = uuidv4();
+            // 1. Định danh Client ID
+            // Vì chỉ có User dùng Google -> Fix cứng luôn là 'user-app'
+            // (Service cần cái này để lưu vào DB field authClientId)
+            const authClientId = 'USER_UI_ID'; 
 
-            // 2. Lưu state vào cookie (HttpOnly, SameSite=Lax)
-            // 'lax' là cần thiết cho redirect đi và quay về
-            res.cookie('oauth_state', state, {
-                maxAge: ms('5m'), // 5 phút
+            // 2. Gọi Service để tạo URL (Service sẽ mã hóa clientId vào state)
+            const googleOAuthUrl = OAuthService.getGoogleOAuthURL(authClientId);
+
+            // 3. 💡 FIX LỖI INVALID STATE:
+            // Trích xuất chuỗi 'state' thực sự mà Service đã tạo ra từ URL
+            const urlObj = new URL(googleOAuthUrl);
+            const stateGeneratedByService = urlObj.searchParams.get('state');
+
+            // 4. Lưu chuỗi state ĐÓ vào cookie (HttpOnly) để đối chiếu khi quay về
+            res.cookie('oauth_state', stateGeneratedByService, {
+                maxAge: ms('5m'), 
                 httpOnly: true,
                 secure: NODE_ENV === 'production',
-                sameSite: 'lax'
+                sameSite: 'lax' // Bắt buộc là lax để cookie tồn tại qua redirect
             });
 
-            // 3. Lấy URL xác thực của Google
-            const googleOAuthUrl = OAuthService.getGoogleOAuthURL(state);
-
-            // 4. Redirect người dùng đến Google
+            // 5. Redirect người dùng sang Google
             res.redirect(googleOAuthUrl);
+
         } catch (error) {
             next(error);
         }
@@ -40,45 +46,54 @@ export const OAuthController = {
 
     /**
      * GET /google/callback
-     * Xử lý callback từ Google, đăng nhập hoặc tạo user, và redirect về Frontend.
+     * Google redirect về đây kèm theo ?code=...&state=...
      */
     googleCallback: async (req, res, next) => {
         const { code, state } = req.query;
         const storedState = req.cookies?.oauth_state;
 
         try {
-            // 0. Xóa cookie state (dùng 1 lần)
+            // 0. Xóa cookie state ngay lập tức (dùng 1 lần)
             res.clearCookie('oauth_state', { httpOnly: true, sameSite: 'lax' });
 
-            // 1. Kiểm tra State (chống CSRF) và Code
-            if (!code) {
-                throw new Error("Thiếu mã ủy quyền (code).");
-            }
+            // 1. Validate Input
+            if (!code) throw new Error("Thiếu mã ủy quyền (code).");
+            
+            // 2. Validate State (So sánh state Google trả về vs Cookie)
             if (!state || !storedState || state !== storedState) {
-                throw new Error("Lỗi xác thực (invalid state).");
+                console.error(`State mismatch: Server sent ${storedState} but got back ${state}`);
+                throw new Error("Lỗi xác thực (invalid state). Vui lòng thử lại.");
             }
 
-            // 2. Gọi Service để xử lý
+            // 3. Gọi Service xử lý (Trao đổi Code lấy Token, Tạo User...)
             const result = await OAuthService.handleGoogleCallback(code, req);
 
-            // 3. Thiết lập Refresh Token vào HttpOnly Cookie
-            // Dùng 'strict' vì cookie này chỉ dùng cho API của chính mình
+            // 4. Lưu Refresh Token vào HttpOnly Cookie
             res.cookie('refreshToken', result.refreshToken, {
                 httpOnly: true,
                 secure: NODE_ENV === 'production',
                 maxAge: ms(REFRESH_TOKEN_EXPIRY || '7d'),
-                sameSite: 'strict'
+                sameSite: 'strict' 
             });
 
-            // 4. Redirect về trang chủ của Frontend
-            res.redirect(FRONTEND_URL || '/');
+            // 5. 💡 REDIRECT VỀ USER FRONTEND
+            // Không cần check Admin nữa, luôn về FRONTEND_URL
+            const targetRedirectUrl = FRONTEND_URL || 'http://localhost:3000';
+            
+            const redirectUrl = new URL(targetRedirectUrl);
+            // Gắn AccessToken vào URL để Frontend lấy và lưu vào Memory
+            redirectUrl.searchParams.append('accessToken', result.accessToken);
+
+            res.redirect(redirectUrl.toString());
 
         } catch (error) {
-            console.error("Lỗi Google Callback Controller:", error.message);
-            // 5. Nếu lỗi, redirect về trang đăng nhập của Frontend với thông báo lỗi
-            const frontendLoginUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/login` : '/login';
-            const errorMessage = (error.statusCode === 403) ? error.message : "Đăng nhập Google thất bại.";
-            res.redirect(`${frontendLoginUrl}?error=${encodeURIComponent(errorMessage)}`);
+            console.error("Lỗi Google Callback:", error.message);
+            
+            // Redirect về trang Login của User App kèm thông báo lỗi
+            const errorRedirectUrl = new URL((FRONTEND_URL || 'http://localhost:3000') + '/login');
+            errorRedirectUrl.searchParams.append('error', error.message);
+            
+            res.redirect(errorRedirectUrl.toString());
         }
     }
 };
