@@ -33,7 +33,7 @@ export default function StockManagement() {
   }, [selectedCenter, selectedYear, selectedMonth]);
 
   const fetchInventory = async () => {
-    const res = await getInventoryList({ centerId: selectedCenter });
+    const res = await getInventoryList(selectedCenter );
     setInventoryList(res.data?.data || []);
   };
 
