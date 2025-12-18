@@ -4,6 +4,8 @@ import { AuthService } from '../services/auth.service.js';
 import { TokenService } from '../services/token.service.js';
 import { Prisma } from '@prisma/client';
 import ms from 'ms';
+import { getCookieName } from '../utils/auth.util.js';
+import { REFRESH_TOKEN_EXPIRY } from '../configs/env.config.js';
 
 // -----------------------------------------------------------------
 // AuthController: Gom tất cả các hàm xử lý request (Controller handlers)
@@ -133,78 +135,88 @@ export const AuthController = {
      * DELETE /sessions: Đăng xuất
      */
     deleteSession: async (req, res, next) => {
-        // Lấy token từ các tên cookie có thể có
-        const refreshToken = req.cookies?.refreshToken || req.cookies?.admin_refresh_token || req.cookies?.user_refresh_token;
+        // 🟢 2. LẤY CLIENT ID TỪ HEADER ĐỂ XÓA ĐÚNG COOKIE
+        const clientId = req.headers['x-client-id'];
+        const cookieName = getCookieName(clientId);
 
-        // Xóa tất cả cookie cho chắc chắn
-        ['refreshToken', 'admin_refresh_token', 'user_refresh_token'].forEach(name => {
-            res.clearCookie(name, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict'
-            });
+        const refreshToken = req.cookies?.[cookieName]; // Chỉ lấy đúng cookie này
+
+        // Xóa cookie cụ thể
+        res.clearCookie(cookieName, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+            path: '/'
         });
 
+        // (Optional) Xóa cookie fallback cho chắc
+        res.clearCookie('refreshToken');
+
         if (!refreshToken) {
-            return res.status(200).json({ message: "Đăng xuất thành công (No token found)." });
+            return res.status(200).json({ message: "Đăng xuất thành công (No token)." });
         }
 
         try {
             await AuthService.logoutUser(refreshToken);
             res.status(200).json({ message: "Đăng xuất thành công." });
         } catch (error) {
-            console.error("Lỗi xóa token khỏi DB:", error);
             res.status(200).json({ message: "Đăng xuất thành công." });
         }
     },
 
     /**
      * POST /refresh_tokens: Làm mới Access Token
-     * 🟢 CẬP NHẬT: Cần Client ID để validate binding
+     * 🟢 QUAN TRỌNG NHẤT: SỬA LỖI CONFIICT SESSION TẠI ĐÂY
      */
     createNewToken: async (req, res, next) => {
-        // Lấy token từ Cookie (Ưu tiên) -> Body
-        const refreshToken = req.cookies?.refreshToken
-            || req.cookies?.admin_refresh_token
-            || req.cookies?.user_refresh_token
-            || req.body.refreshToken;
-
-        // Lấy Client ID từ Body (thường gửi kèm khi refresh) hoặc Header
-        const clientId = req.body.clientId || req.headers['x-client-id'];
-
-        if (!refreshToken) {
-            return res.status(401).json({ message: "Thiếu Refresh Token." });
-        }
-
         try {
-            // 💡 Gọi TokenService, truyền thêm clientId để kiểm tra bảo mật
+            // 1. Lấy Client ID từ Header (Frontend Axios đã gửi lên)
+            const clientId = req.headers['x-client-id'];
+
+            if (!clientId) {
+                // Nếu không có Client ID, từ chối ngay lập tức để tránh đoán mò cookie
+                return res.status(400).json({ message: "Missing x-client-id header." });
+            }
+
+            // 2. Xác định tên cookie cần đọc
+            const cookieName = getCookieName(clientId);
+
+            // 3. 🟢 CHỈ ĐỌC COOKIE CỦA CLIENT ĐÓ. TUYỆT ĐỐI KHÔNG FALLBACK SANG CÁI KHÁC.
+            // Nếu là User App -> Chỉ đọc user_refresh_token. Nếu không có -> Coi như chưa login.
+            const refreshToken = req.cookies?.[cookieName] || req.body.refreshToken;
+
+            if (!refreshToken) {
+                return res.status(401).json({ message: "Phiên đăng nhập hết hạn hoặc không tồn tại." });
+            }
+
+            // 4. Gọi Service (Service sẽ check thêm binding clientId trong DB nữa cho chắc)
             const result = await TokenService.refreshTokens(refreshToken, clientId);
 
-            // Xác định lại tên cookie để set lại (xoay vòng)
-            let cookieName = 'refreshToken';
-            if (clientId === 'ADMIN_UI_ID') cookieName = 'admin_refresh_token';
-            else if (clientId === 'USER_UI_ID') cookieName = 'user_refresh_token';
-
+            // 5. Set lại cookie mới (Token Rotation) với đúng tên cũ
             res.cookie(cookieName, result.refreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                maxAge: ms(process.env.REFRESH_TOKEN_EXPIRY || '7d'),
-                sameSite: 'strict'
+                maxAge: ms(REFRESH_TOKEN_EXPIRY || '7d'),
+                sameSite: 'strict',
+                path: '/'
             });
 
             res.status(200).json({
-                message: "Token đã được làm mới thành công.",
+                message: "Token refreshed.",
                 accessToken: result.accessToken,
                 user: result.user
             });
+
         } catch (error) {
-            // Xóa mọi cookie nếu lỗi
-            ['refreshToken', 'admin_refresh_token', 'user_refresh_token'].forEach(name => {
-                res.clearCookie(name);
-            });
+            // Nếu lỗi, xóa đúng cookie của client đó
+            const clientId = req.headers['x-client-id'];
+            if (clientId) {
+                res.clearCookie(getCookieName(clientId));
+            }
             return res.status(403).json({ message: error.message });
         }
     },
+
     /**
      * 💡 HÀM MỚI: Xử lý request đổi mật khẩu
      * PUT /change-password

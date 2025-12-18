@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useMemo } from "react";
-// Đảm bảo đường dẫn import chính xác với cấu trúc folder của bạn
+// Đảm bảo đường dẫn import chính xác
 import { fetchUserInfo } from "../apiV2/user_service/rest/users.api.js"; 
 import { logoutUser } from "../apiV2/auth_service/auth.api.js";
 import { refreshTokenApi } from "../apiV2/auth_service/token.api.js";
@@ -15,37 +15,38 @@ export const AuthProvider = ({ children }) => {
         try {
             console.log("[AuthContext] Đang khởi tạo phiên đăng nhập...");
 
-            // 1. Gọi Refresh để lấy lại session (Cookie -> Access Token)
+            // 1. Gọi Refresh Token trước tiên (token.api.js đã có header x-client-id)
+            // Request này sẽ gửi cookie 'user_refresh_token' lên server
             const data = await refreshTokenApi();
             const { accessToken, user: authUser } = data;
 
-            // 2. Cập nhật axios ngay lập tức
-            axiosInstance.setAuthToken(accessToken);
+            if (accessToken) {
+                // 2. Set Token cho Axios Instance chính
+                axiosInstance.setAuthToken(accessToken);
 
-            // 3. Lấy thông tin Profile chi tiết
-            const profileData = await fetchUserInfo();
+                // 3. Gọi API lấy profile chi tiết (User Service)
+                // Lúc này request đã có Authorization Header nhờ bước 2
+                const profileData = await fetchUserInfo();
 
-            // 4. Merge User
-            const fullUser = {
-                ...authUser,
-                ...profileData,
-                hasPassword: authUser?.hasPassword ?? false
-            };
-            
-            setUser(fullUser);
-            console.log("[AuthContext] Khôi phục phiên thành công:", fullUser.username);
+                const fullUser = {
+                    ...authUser,
+                    ...profileData,
+                    hasPassword: authUser?.hasPassword ?? false
+                };
+                
+                setUser(fullUser);
+                console.log("[AuthContext] Khôi phục phiên thành công:", fullUser.username);
+            }
 
         } catch (error) {
-            // 💡 BEST PRACTICE: Xử lý lỗi im lặng cho người dùng khách
-            // Nếu lỗi là 401 hoặc 403, nghĩa là Token hết hạn hoặc không có -> Là Khách
+            // Xử lý lỗi im lặng cho người dùng khách
             if (error.response && (error.response.status === 401 || error.response.status === 403)) {
                 console.log("[AuthContext] Trạng thái: Khách (Chưa đăng nhập).");
             } else {
-                // Chỉ log warning nếu là lỗi mạng hoặc lỗi Server (500)
-                console.warn("[AuthContext] Không thể khôi phục phiên (Lỗi mạng/Server):", error.message);
+                console.warn("[AuthContext] Không thể khôi phục phiên:", error.message);
             }
             
-            // Dọn dẹp state để đảm bảo sạch sẽ
+            // Dọn dẹp state
             setUser(null);
             axiosInstance.clearAuthToken();
         } finally {
@@ -57,17 +58,16 @@ export const AuthProvider = ({ children }) => {
         initializeAuth();
     }, []);
 
-    // 💡 HÀM LOGIN CHUẨN
     const login = async (authData) => {
         try {
             setLoading(true);
             const { accessToken, user: baseUser } = authData;
             
-            // 1. Set Token cho Axios trước tiên
+            // 1. Set Token ngay lập tức
             axiosInstance.setAuthToken(accessToken);
             console.log("[AuthContext] Token set, fetching profile...");
 
-            // 2. Gọi API lấy profile chi tiết
+            // 2. Gọi API lấy profile
             const profileData = await fetchUserInfo();
             
             const fullUser = { 
@@ -76,9 +76,7 @@ export const AuthProvider = ({ children }) => {
                 hasPassword: baseUser?.hasPassword ?? false
             };
             
-            // 3. Set State
             setUser(fullUser);
-            
             return true;
         } catch (e) {
             console.error("[AuthContext] Login error:", e);
@@ -92,13 +90,13 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            await logoutUser();
+            await logoutUser(); // Gọi API xóa cookie
         } catch (error) {
             console.error("Logout warning:", error.message);
         } finally {
             axiosInstance.clearAuthToken();
             setUser(null);
-            // window.location.reload(); // Uncomment nếu muốn reload trang để clear cache
+            // window.location.reload(); 
         }
     };
 
@@ -107,9 +105,7 @@ export const AuthProvider = ({ children }) => {
         try {
             const profileData = await fetchUserInfo();
             setUser(prev => ({ ...prev, ...profileData }));
-        } catch (e) { 
-            console.error("Refresh user info failed:", e); 
-        }
+        } catch (e) { console.error("Refresh user info failed:", e); }
     };
 
     const contextValue = useMemo(() => ({

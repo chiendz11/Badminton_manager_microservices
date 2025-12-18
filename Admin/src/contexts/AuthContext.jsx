@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect, useMemo } from "react";
+// Import API
 import { fetchAdminInfo } from "../apiV2/user_service/rest/user.api.js";
 import { logoutAdmin } from "../apiV2/auth_service/auth.api.js";
 import { refreshTokenApi } from "../apiV2/auth_service/token.api.js";
@@ -8,66 +9,65 @@ export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
     const [admin, setAdmin] = useState(null);
-    const [loading, setLoading] = useState(true);
+    // Bắt đầu là true để chặn render cho đến khi check xong
+    const [loading, setLoading] = useState(true); 
 
     const initializeAuth = async () => {
         try {
-            console.log("[AuthContext] Khởi động ứng dụng...");
-            // 1. Gọi Refresh để lấy lại session
+            console.log("[AuthContext] Đang khôi phục phiên đăng nhập...");
+            
+            // 1. Gọi Refresh Token (Đã có header x-client-id nhờ token.api.js)
             const data = await refreshTokenApi();
             const { accessToken, user: authUser } = data;
 
-            // 2. Cập nhật axios ngay lập tức
-            axiosInstance.setAuthToken(accessToken);
+            if (accessToken) {
+                // 2. Set Token cho Axios Instance chính
+                axiosInstance.setAuthToken(accessToken);
 
-            // 3. Lấy thông tin chi tiết
-            const profileData = await fetchAdminInfo();
+                // 3. Lấy thông tin Profile chi tiết (User Service)
+                const profileData = await fetchAdminInfo();
 
-            const fullAdmin = {
-                ...authUser,
-                ...profileData,
-                hasPassword: authUser?.hasPassword ?? false
-            };
-            
-            setAdmin(fullAdmin);
+                const fullAdmin = {
+                    ...authUser,
+                    ...profileData,
+                    hasPassword: authUser?.hasPassword ?? false
+                };
+                
+                setAdmin(fullAdmin);
+                console.log("[AuthContext] Khôi phục thành công.");
+            }
         } catch (error) {
-            console.warn("[AuthContext] Chưa đăng nhập hoặc phiên hết hạn:", error.message);
+            // Không log error quá ồn ào vì F5 khi chưa login là chuyện bình thường
+            // console.warn("[AuthContext] Phiên hết hạn hoặc chưa đăng nhập.");
             setAdmin(null);
-            // Quan trọng: Xóa token cũ trong axios nếu có
             axiosInstance.clearAuthToken();
         } finally {
+            // Dù thành công hay thất bại cũng phải tắt loading để app render
             setLoading(false);
         }
     };
 
+    // Chạy 1 lần duy nhất khi F5
     useEffect(() => {
         initializeAuth();
     }, []);
 
-    // 💡 SỬA HÀM LOGIN: Đảm bảo đồng bộ token trước khi set state
     const login = async (authData) => {
         try {
             setLoading(true);
             const { accessToken, user } = authData;
             
-            // 1. CỰC KỲ QUAN TRỌNG: Set token cho axios trước tiên!
-            // Để các request sau đó (như fetchAdminInfo) có header Authorization
+            // 1. Set token ngay lập tức
             axiosInstance.setAuthToken(accessToken);
             
-            console.log("[AuthContext] Token set, fetching profile...");
-
-            // 2. Sau đó mới gọi API lấy profile
+            // 2. Lấy profile
             const profileData = await fetchAdminInfo();
-            
             const fullAdmin = { ...user, ...profileData };
             
-            // 3. Cuối cùng mới set state để kích hoạt re-render và chuyển trang
             setAdmin(fullAdmin);
-            
-            return true; // Trả về true để Login.jsx biết đường redirect
+            return true;
         } catch (e) {
             console.error("[AuthContext] Login error:", e);
-            // Nếu lỗi, rollback
             axiosInstance.clearAuthToken();
             setAdmin(null);
             throw e;
@@ -78,17 +78,19 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            await logoutAdmin();
+            await logoutAdmin(); // Gọi API xóa cookie
         } catch (error) {
-            console.error("Logout error:", error);
+            console.error("Logout warning:", error);
         } finally {
+            // Xóa sạch ở client bất kể API thành công hay không
             axiosInstance.clearAuthToken();
             setAdmin(null);
-            // Optional: Reload trang để xóa sạch state trong memory
-            // window.location.reload(); 
+            // Có thể reload để đảm bảo sạch memory
+            // window.location.href = "/login"; 
         }
     };
 
+    // Hàm update thông tin admin thủ công nếu cần
     const refreshAdmin = async () => {
         if (!admin) return;
         try {
@@ -108,6 +110,7 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider value={contextValue}>
+            {/* Chỉ render children khi đã check xong auth */}
             {!loading && children}
         </AuthContext.Provider>
     );
