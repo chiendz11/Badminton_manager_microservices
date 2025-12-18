@@ -1,3 +1,4 @@
+//BM/services/inventory_service/src/configs/db.config.js
 import mongoose from "mongoose";
 import { env } from "./env.config.js";
 
