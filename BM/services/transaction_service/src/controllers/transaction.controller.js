@@ -31,7 +31,7 @@ export const TransactionController = {
   getSellHistory: async (req, res) => {
     try {
       const result = await TransactionService.getSellHistory(req.query);
-      res.json(result);
+      res.json({data: result});
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
