@@ -1,12 +1,10 @@
 import { User } from '../models/user.model.js';
-import { StorageClient } from '../clients/storage.client.js'; // 💡 IMPORT API MỚI
+import { StorageClient } from '../clients/storage.client.js';
 import { DEFAULT_AVATAR_FILE_ID } from '../configs/env.config.js';
 import { UserExtraService } from './user-extra.service.js';
 import { MeiliSearch } from 'meilisearch';
-import { publishToExchange } from '../clients/rabbitmq.client.js';
-import { ROUTING_KEYS } from '../clients/rabbitmq.client.js';
+import { publishToExchange, ROUTING_KEYS } from '../clients/rabbitmq.client.js';
 import consola from 'consola';
-
 
 const client = new MeiliSearch({
     host: process.env.MEILISEARCH_URL || 'http://my_meilisearch:7700',
@@ -21,121 +19,87 @@ export const UserService = {
             const result = await index.search(keywords)
             return result.hits;
         } catch (error) {
-            console.error("MeiliSearch findUsersByKeywords Error:", error);
-            throw error;
+            console.error("MeiliSearch Error:", error);
+            return []; // Trả về mảng rỗng thay vì throw để UI không crash
         }
     },
 
-    // Tìm người dùng theo userId (UUID)
     async findUserById(userId) {
-        // ... (Giữ nguyên logic findUserById)
-        const cleanUserId = userId
-            ? userId.trim()
-            : null;
-
-        console.log(`[UserService] Bắt đầu tìm kiếm User ID (UUID, chuẩn hóa): ${cleanUserId}`);
-
-        if (!cleanUserId) {
-            return null;
-        }
+        const cleanUserId = userId ? userId.trim() : null;
+        if (!cleanUserId) return null;
 
         try {
-            // Sử dụng findOne với index 'userId' là cách chuẩn và hiệu quả
             const user = await User.findOne({ userId: cleanUserId }).lean();
-            // Mặc định chọn tất cả trừ __v
-            if (!user) {
-                console.warn(`[UserService] ❌ Không tìm thấy hồ sơ User trong MongoDB với userId: ${cleanUserId}`);
-                return null;
-            }
-
-            console.log(`[UserService] ✅ Tìm thấy hồ sơ User.`);
+            if (!user) return null;
             return user;
-
         } catch (error) {
-            console.error(`[UserService] Lỗi khi truy vấn DB cho userId ${cleanUserId}:`, error.message);
-            // Ném lỗi để Controller (nơi gọi) có thể bắt và xử lý (vd: trả về 500)
-            throw new Error(`DB Query Failed for User ID ${cleanUserId}`);
+            console.error(`[UserService] DB Query Failed for User ID ${cleanUserId}`, error);
+            throw new Error(`DB Query Failed`);
         }
     },
 
-    // Tạo hồ sơ người dùng (profile) mới
     async createProfile(profileData) {
         try {
-            // 1. Tạo một đối tượng User mới từ Schema và dữ liệu được truyền vào.
-            consola.info(`[UserService] Bắt đầu tạo hồ sơ mới cho email: ${profileData.email} / username: ${profileData.username}`);
+            consola.info(`[UserService] Creating profile: ${profileData.email}`);
+
+            // 1. Lưu vào DB
             const savedProfile = await User.findOneAndUpdate(
-                {$or: [
-                    { email: profileData.email },
-                    { username: profileData.username }
-                ]},
-                { $set: profileData }, // Chỉ set nếu insert mới
-                { new: true, upsert: true, lean: true } // Trả về document mới và upsert
+                {
+                    $or: [
+                        { email: profileData.email },
+                        { username: profileData.username }
+                    ]
+                },
+                { $set: profileData },
+                { new: true, upsert: true, lean: true }
             );
+
+            // 2. Init bảng phụ
             await UserExtraService.initUserExtra(savedProfile.userId);
 
-            console.log(`[UserService] ✅ Tạo hồ sơ mới thành công cho userId: ${savedProfile.userId}`);
-
-            // 👇 4. GỬI MESSAGE TỚI RABBITMQ
-            // Booking Service cần userId và points (mặc định là 0)
+            // 3. Chuẩn bị message
             const eventMessage = {
                 type: 'USER_CREATED',
                 payload: savedProfile,
                 timestamp: new Date()
             };
 
-            // Gọi hàm publish đã có sẵn trong rabbitmq.client.js
-            // Routing key để rỗng vì exchange là 'fanout'
-            await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventMessage);
+            // 4. Bắn tin với Key riêng: user.create.profile
+            await publishToExchange(ROUTING_KEYS.USER_PROFILE_CREATE_EVENT, eventMessage);
 
             return savedProfile;
-
         } catch (error) {
-            console.error(`[UserService] Lỗi khi tạo profile:`, error.message);
+            console.error(`[UserService] Create Profile Error:`, error.message);
             throw error;
         }
     },
 
-    // Cập nhật thông tin profile cơ bản (name, phone_number, etc.)
     async updateProfile(userId, dataToUpdate) {
-        // ... (Giữ nguyên logic updateProfile)
         const cleanUserId = userId.trim();
-
         try {
             const savedProfile = await User.findOneAndUpdate(
-                { userId: cleanUserId },  // Điều kiện tìm (bằng UUID)
-                { $set: dataToUpdate },   // Dữ liệu cần cập nhật
+                { userId: cleanUserId },
+                { $set: dataToUpdate },
                 {
                     new: true,
-                    runValidators: true, // 💡 Quan trọng: Chạy lại validation (vd: check unique SĐT)
-                    select: [
-                        'userId', 'name', 'phone_number', 'avatar_file_id', 'avatar_url', 'level', 'points',
-                        'createdAt',
-                        'email', 'username'
-                    ].join(' '),
+                    runValidators: true,
+                    select: 'userId name phone_number avatar_file_id avatar_url level points createdAt email username',
                     lean: true
                 }
             );
 
-            if (!savedProfile) {
-                // Lỗi này không nên xảy ra nếu logic FE đúng
-                console.warn(`[UserService] ❌ Không tìm thấy hồ sơ User để CẬP NHẬT (userId: ${cleanUserId})`);
-                throw new Error("Không tìm thấy hồ sơ người dùng để cập nhật.");
-            }
+            if (!savedProfile) throw new Error("User not found for update.");
 
             const eventMessage = {
                 type: 'USER_UPDATED',
                 payload: savedProfile,
                 timestamp: new Date()
             };
-
             await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventMessage);
 
-            console.log(`[UserService] ✅ Cập nhật hồ sơ thành công cho userId: ${cleanUserId}`);
             return savedProfile;
-
         } catch (error) {
-            // Lỗi (thường là 11000 - Trùng SĐT) sẽ được Controller bắt
-            console.error(`[UserService] Lỗi khi cập nhật hồ sơ cho userId ${cleanUserId}:`, error.message);
+            console.error(`[UserService] Update Profile Error:`, error.message);
             throw error;
         }
     },
@@ -143,71 +107,48 @@ export const UserService = {
     async updateUserById(userId, data) {
         try {
             const cleanUserId = userId.trim();
-
-            // 1. Lọc dữ liệu (Security Best Practice)
-            // Chỉ cho phép Admin cập nhật các trường thông tin cá nhân tại đây.
-            // Các trường Identity (email, username, role) phải được xử lý qua quy trình đồng bộ từ Auth Service.
             const allowedUpdates = {};
-
             if (data.name) allowedUpdates.name = data.name.trim();
             if (data.phone_number) allowedUpdates.phone_number = data.phone_number.trim();
-
-            // (Mở rộng: Nếu sau này muốn cho Admin sửa avatar qua link/id trực tiếp)
             if (data.avatar_file_id) allowedUpdates.avatar_file_id = data.avatar_file_id;
             if (data.avatar_url) allowedUpdates.avatar_url = data.avatar_url;
 
-            // ⚠️ CẢNH BÁO: Không cập nhật email/username ở đây để tránh lệch data với Auth Service.
-            // Nếu payload có gửi email/username, ta lờ đi.
-
-            // 2. Thực hiện Update
             const savedProfile = await User.findOneAndUpdate(
-                { userId: cleanUserId }, // Tìm theo UUID
+                { userId: cleanUserId },
                 { $set: allowedUpdates },
-                { new: true, runValidators: true } // Trả về document mới nhất và chạy validate schema
-            ).select('-__v'); // Ẩn version key
+                { new: true, runValidators: true }
+            ).select('-__v');
 
-            const eventMessage = {
-                type: 'USER_UPDATED',
-                payload: savedProfile,
-                timestamp: new Date()
-            };
-
-            await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventMessage);
+            if (savedProfile) {
+                const eventMessage = {
+                    type: 'USER_UPDATED',
+                    payload: savedProfile,
+                    timestamp: new Date()
+                };
+                await publishToExchange(ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT, eventMessage);
+            }
 
             return savedProfile;
-
         } catch (error) {
             console.error(`[UserService] updateUserById Error:`, error.message);
             throw error;
         }
     },
 
-    // 💡 HÀM MỚI: Cập nhật Avatar (Bao gồm Upload và Xóa file cũ)
     async updateAvatarData(userId, fileBuffer, originalname) {
         const cleanUserId = userId.trim();
+        if (!cleanUserId || !fileBuffer) throw new Error("Invalid upload data.");
 
-        if (!cleanUserId || !fileBuffer) {
-            throw new Error("Dữ liệu upload không hợp lệ.");
-        }
-
-        // 1. Lấy thông tin User hiện tại để lấy ID file cũ (nếu có)
         const currentUser = await this.findUserById(cleanUserId);
-        if (!currentUser) {
-            throw new Error("Không tìm thấy hồ sơ người dùng để cập nhật avatar.");
-        }
-        const oldFileId = currentUser.avatar_file_id; // ID file cũ
+        if (!currentUser) throw new Error("User not found.");
+        const oldFileId = currentUser.avatar_file_id;
 
         let newFileMetadata;
         try {
-            // 2. GỌI API NỘI BỘ (PROXY) để upload file mới lên Storage Service
             newFileMetadata = await StorageClient.uploadFile(
-                fileBuffer,
-                originalname,
-                cleanUserId,
-                'avatar' // Loại file
+                fileBuffer, originalname, cleanUserId, 'avatar'
             );
 
-            // 3. CẬP NHẬT DB (Lưu URL và ID file mới)
             const updatedUser = await User.findOneAndUpdate(
                 { userId: cleanUserId },
                 {
@@ -216,42 +157,21 @@ export const UserService = {
                         avatar_url: newFileMetadata.publicUrl
                     }
                 },
-                {
-                    new: true,
-                    select: [
-                        'userId', 'name', 'phone_number', 'avatar_file_id', 'avatar_url', 'level', 'points',
-                        'createdAt', 'email', 'username'
-                    ].join(' '),
-                    lean: true
-                }
+                { new: true, lean: true }
             );
 
             if (!updatedUser) {
-                // Nếu update DB thất bại, cần dọn dẹp file đã upload ở bước 2
                 await StorageClient.deleteFile(newFileMetadata.publicFileId);
-                throw new Error("Không tìm thấy hồ sơ người dùng để cập nhật avatar.");
+                throw new Error("DB Update failed after upload.");
             }
 
-            // 4. GỌI API NỘI BỘ để XÓA file cũ (nếu có)
-            if (oldFileId) {
-                console.log(`[UserService] Tìm thấy avatar cũ (custom), tiến hành xóa: ${oldFileId}`);
-
-                // (Tùy chọn: Vẫn nên giữ check DEFAULT_ID ở đây một thời gian 
-                // để hỗ trợ các user cũ chưa được migrate dữ liệu)
-                if (oldFileId !== DEFAULT_AVATAR_FILE_ID) {
-                    await StorageClient.deleteFile(oldFileId);
-                }
-            } else {
-                console.log(`[UserService] User đang dùng avatar mặc định (null), không cần xóa file cũ.`);
+            if (oldFileId && oldFileId !== DEFAULT_AVATAR_FILE_ID) {
+                await StorageClient.deleteFile(oldFileId);
             }
 
-            console.log(`[UserService] ✅ Cập nhật AVATAR thành công cho userId: ${cleanUserId}`);
             return updatedUser;
-
         } catch (error) {
-            console.error(`[UserService] Lỗi khi xử lý AVATAR cho userId ${cleanUserId}:`, error.message);
-            // Quan trọng: Nếu lỗi xảy ra sau khi upload (bước 2), cần dọn dẹp file đã upload
-            if (newFileMetadata && newFileMetadata.publicFileId) {
+            if (newFileMetadata?.publicFileId) {
                 await StorageClient.deleteFile(newFileMetadata.publicFileId);
             }
             throw error;
@@ -263,41 +183,17 @@ export const UserService = {
             const skip = (page - 1) * limit;
             const query = {};
 
-            // Lọc theo Role (Bắt buộc cho trang UserManage)
-            if (role) {
-                query.role = role.toUpperCase();
-            }
-
-            // Lọc theo Trạng thái (Active / Banned)
-            // Lưu ý: query param gửi lên thường là string 'true'/'false'
-            if (isActive !== undefined && isActive !== '') {
-                query.isActive = (isActive === 'true');
-            }
-
-            // Tìm kiếm (Tên, Email, SĐT)
+            if (role) query.role = role.toUpperCase();
+            if (isActive !== undefined && isActive !== '') query.isActive = (isActive === 'true');
             if (search) {
                 const searchRegex = new RegExp(search, 'i');
-                query.$or = [
-                    { name: searchRegex },
-                    { email: searchRegex },
-                    { phone_number: searchRegex }
-                ];
+                query.$or = [{ name: searchRegex }, { email: searchRegex }, { phone_number: searchRegex }];
             }
+            if (level && level !== 'Tất cả') query.level = level.toLowerCase();
 
-            // Lọc theo Rank
-            if (level && level !== 'Tất cả') {
-                query.level = level.toLowerCase();
-            }
-
-            // Thực thi Query
             const [totalDocs, users] = await Promise.all([
                 User.countDocuments(query),
-                User.find(query)
-                    .select('-__v')
-                    .sort({ [sort]: order === 'asc' ? 1 : -1 })
-                    .skip(skip)
-                    .limit(parseInt(limit))
-                    .lean()
+                User.find(query).select('-__v').sort({ [sort]: order === 'asc' ? 1 : -1 }).skip(skip).limit(parseInt(limit)).lean()
             ]);
 
             return {
@@ -316,20 +212,122 @@ export const UserService = {
             throw error;
         }
     },
+
     async updateUserStatus(userId, isActive) {
         try {
             const cleanUserId = userId.trim();
+
+            // 1. Cập nhật DB
             const updatedUser = await User.findOneAndUpdate(
                 { userId: cleanUserId },
                 { $set: { isActive: isActive } },
                 { new: true }
             ).select('-__v').lean();
-            if (!updatedUser) {
-                throw new Error("Không tìm thấy hồ sơ người dùng để cập nhật trạng thái.");
-            }
+
+            if (!updatedUser) throw new Error("User not found for status update.");
+
+            // 2. Bắn Event sang RabbitMQ để Booking Service bắt
+            const eventMessage = {
+                type: 'USER_STATUS_UPDATED',  // 👈 Type riêng cho status
+                payload: {
+                    userId: updatedUser.userId,
+                    isActive: updatedUser.isActive
+                },
+                timestamp: new Date()
+            };
+
+            // Dùng Routing Key riêng cho status (ví dụ: 'user.update.status')
+            await publishToExchange(ROUTING_KEYS.USER_STATUS_UPDATE_EVENT, eventMessage);
+
+            consola.info(`[UserService] Status updated & event published for: ${cleanUserId}`);
+
             return updatedUser;
         } catch (error) {
             console.error(`[UserService] updateUserStatus Error:`, error.message);
+            throw error;
+        }
+    },
+
+    // 👇👇 CÁC HÀM MỚI ĐỂ XỬ LÝ SỰ KIỆN TỪ BOOKING SERVICE 👇👇
+
+    async updateUserPoints(userId, pointsToAdd) {
+        try {
+            const updatedUser = await User.findOneAndUpdate(
+                { userId: userId },
+                { $inc: { points: pointsToAdd } }, // Cộng dồn điểm
+                { new: true }
+            );
+            return updatedUser;
+        } catch (error) {
+            consola.error('Error updating points:', error);
+            throw error;
+        }
+    },
+
+    // 👇 1. Xử lý khi phát hiện Spam
+    async handleSpamDetection(userId) {
+        try {
+            const user = await User.findOne({ userId });
+            if (!user) return;
+
+            const newCount = (user.violationCount || 0) + 1;
+
+            if (newCount >= MAX_VIOLATIONS_BEFORE_HARD_BAN) {
+                // 🛑 TRƯỜNG HỢP 1: HARD BAN (QUÁ GIỚI HẠN)
+                await User.updateOne(
+                    { userId },
+                    {
+                        $set: {
+                            isActive: false,
+                            isSpamming: false,
+                            violationCount: newCount
+                        },
+                        $unset: { lastSpamTime: 1 }
+                    }
+                );
+                consola.error(`💀 HARD BAN USER ${userId}: Reached ${newCount} violations.`);
+
+                // 👇👇 [QUAN TRỌNG] BẮN EVENT ĐỂ BOOKING SERVICE BIẾT 👇👇
+                await publishToExchange(ROUTING_KEYS.USER_STATUS_UPDATE_EVENT, {
+                    userId: userId,
+                    isActive: false, // Báo tử
+                    reason: `Hard ban due to ${newCount} spam violations`
+                });
+
+            } else {
+                // ⚠️ TRƯỜNG HỢP 2: SOFT BAN (CÒN CƠ HỘI)
+                await User.updateOne(
+                    { userId },
+                    {
+                        $set: {
+                            isSpamming: true,
+                            lastSpamTime: new Date(),
+                            violationCount: newCount
+                        }
+                    }
+                );
+                consola.warn(`⚠️ SOFT BAN USER ${userId}: Violation ${newCount}/${MAX_VIOLATIONS_BEFORE_HARD_BAN}`);
+
+                // (Tùy chọn) Bạn có thể không cần bắn event ở đây nếu Booking Service 
+                // đã tự set isSpamming=true lúc phát hiện rồi.
+                // Nhưng nếu muốn chắc chắn đồng bộ, bắn thêm cũng không sao.
+            }
+        } catch (error) {
+            consola.error('Error handling spam detection:', error);
+        }
+    },
+
+    async unmarkUserSpam(userId) {
+        try {
+            await User.findOneAndUpdate(
+                { userId: userId },
+                {
+                    $set: { isSpamming: false },
+                    $unset: { lastSpamTime: 1 } // Xóa trường thời gian
+                }
+            );
+        } catch (error) {
+            consola.error('Error unmarking spam:', error);
             throw error;
         }
     }

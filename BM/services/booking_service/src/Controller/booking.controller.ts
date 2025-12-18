@@ -113,4 +113,12 @@ export class BookingController {
     
     return await this.bookingService.getUserStatistics(userId, validPeriod as any);
   }
+
+  @Get('/api/user/me/exists-pending-booking')
+  @UseGuards(GatewayAuthGuard)
+  async checkExistsPendingBooking(@Req() req: any) {
+    const userId = req.user?.userId;
+    const centerId = req.query?.centerId;
+    return this.bookingService.checkExistsPendingBooking(userId, centerId);
+  }
 }

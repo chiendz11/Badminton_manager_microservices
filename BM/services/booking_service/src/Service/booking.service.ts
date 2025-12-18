@@ -1,41 +1,67 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  Inject,
+  HttpException,
+  HttpStatus
+} from '@nestjs/common';
 import { BookingDocument } from '../Schema/booking.schema';
 import { InjectModel } from '@nestjs/mongoose';
 import mongoose, { Model } from 'mongoose';
 import { Booking } from '../Schema/booking.schema';
-import { Court, CourtDocument } from '../Schema/court.schema'; // Đảm bảo đường dẫn đúng
+import { Court, CourtDocument } from '../Schema/court.schema';
 import { CreateBookingDTO } from '../DTO/create-booking.DTO';
 import { BookingStatus } from '../Schema/booking.schema';
 import { Center } from "../Schema/center.schema";
 import { CourtBookingDetail } from 'src/Schema/court-booking-detail.schema';
 import { PricingSlot } from 'src/Schema/center-pricing.schema';
 import { User } from 'src/Schema/user.schema';
-import { startOfDay, endOfDay } from 'date-fns'
+import { startOfDay, endOfDay } from 'date-fns';
 import { InjectQueue } from '@nestjs/bullmq';
-import { deprecate } from 'util';
-
+import { Queue } from 'bullmq';
+import Redis from 'ioredis';
 import { GetHistoryDto } from 'src/DTO/get-history.DTO';
+// 1. IMPORT RabbitMQ Connection
+import { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
 
-const START_HOUR = 5; // e.g., 5 AM
-const END_HOUR = 24;  // e.g., 10 PM
+const START_HOUR = 5;
+const END_HOUR = 24;
 const TOTAL_SLOTS = END_HOUR - START_HOUR;
+
+// --- CONFIG RATE LIMIT ---
+const MAX_PENDING_SPAM = 3;
+const SPAM_WINDOW_SECONDS = 60 * 10;
+const SPAM_BAN_DURATION = 30 * 60 * 1000; // 30 phút tính bằng mili-giây
+
 type CreateBookingParams = CreateBookingDTO & { userId: string };
 
 @Injectable()
 export class BookingService {
   constructor(
     @InjectQueue('booking-expiration')
-    private bookingQueue: any,
+    private bookingQueue: Queue,
+
     @InjectModel(Booking.name)
     private bookingModel: Model<BookingDocument>,
+
     @InjectModel(Center.name)
     private centerModel: Model<Center>,
+
     @InjectModel(User.name)
     private userModel: Model<User>,
+
     @InjectModel(Court.name)
     private courtModel: Model<CourtDocument>,
+
+    @Inject('REDIS_CLIENT') private readonly redisClient: Redis,
+
+    // 2. INJECT RabbitMQ Connection
+    private readonly amqpConnection: AmqpConnection
   ) { }
 
+  // ... (Các hàm helper giữ nguyên)
   private isWeekend = (dateString: string) => {
     const date = new Date(dateString);
     const day = date.getDay();
@@ -84,35 +110,30 @@ export class BookingService {
     return Math.round(finalPrice);
   }
 
+  // ... (Các hàm find giữ nguyên)
   async findAllBookingsByCenterIdAndDate(centerId: string, bookDate: Date): Promise<Booking[]> {
     return this.bookingModel.find({ centerId, bookDate }).exec();
   }
 
   async getPendingMappingDB(centerId: string, dateStr: string | Date) {
-    // 1. Standardize Date (Start of Day to End of Day)
-    // Using helper library ensures we cover 00:00:00 to 23:59:59 correctly
     const queryDate = new Date(dateStr);
     const start = startOfDay(queryDate);
     const end = endOfDay(queryDate);
 
-    // 2. Query DB
     const bookings = await this.bookingModel.find({
-      centerId: centerId, // Assuming centerId is stored as String or ObjectId
-      bookDate: {         // Note: Your schema used 'bookDate', snippet used 'date'
+      centerId: centerId,
+      bookDate: {
         $gte: start,
         $lte: end
       },
-      bookingStatus: { $in: ["pending", "confirmed", "processing"] }, // Updated to match your Enum
+      bookingStatus: { $in: ["pending", "confirmed", "processing"] },
       isDeleted: false
     })
-      .select('courtBookingDetails bookingStatus userId userName') // Fetch only what we need
+      .select('courtBookingDetails bookingStatus userId userName')
       .lean();
 
-    // 3. Initialize Mapping
-    // Result type: { [courtId: string]: Array<SlotInfo> }
     const mapping: Record<string, any[]> = {};
 
-    // 4. Helper for Status Text
     const getStatusText = (status: string) => {
       switch (status) {
         case 'confirmed': return 'đã đặt';
@@ -122,25 +143,18 @@ export class BookingService {
       }
     };
 
-    // 5. Process Bookings
     bookings.forEach((booking) => {
-      // Handle User Info (Support both populated object or raw string)
       const userId = typeof booking.userId === 'object' ? (booking.userId as any)._id : booking.userId;
       const userName = booking.userName || "Unknown";
 
-      // Loop through court details
       booking.courtBookingDetails.forEach((detail) => {
         const courtKey = detail.courtId.toString();
 
-        // Initialize court array if not exists
         if (!mapping[courtKey]) {
           mapping[courtKey] = new Array(TOTAL_SLOTS).fill("trống");
         }
 
-        // Fill slots
         detail.timeslots.forEach((slotHour) => {
-          // Calculation: If slot is 17 (5PM) and Start Hour is 5, index is 12.
-          // Adjust logic based on how your 'TIMES' array was structured.
           const idx = slotHour - START_HOUR;
 
           if (idx >= 0 && idx < mapping[courtKey].length) {
@@ -177,14 +191,76 @@ export class BookingService {
       bookingStatus: {
         $in: [BookingStatus.PENDING, BookingStatus.PROCESSING, BookingStatus.CONFIRMED]
       },
-
       $or: courtConflictConditions,
     }).exec();
   }
 
+  // ==================================================================
+  // MAIN FUNCTION: CREATE BOOKING
+  // ==================================================================
   async createBooking(data: CreateBookingParams): Promise<Booking> {
+    const { userId } = data;
+
+    // 1. LẤY THÔNG TIN USER TỪ LOCAL DB
+    const user = await this.userModel.findOne({ userId }).exec();
+    if (!user) throw new NotFoundException('User not found');
+
+    // ==================================================================
+    // 🛑 KHIÊN 1: KIỂM TRA ÁN PHẠT TỪ MONGODB (HỒ SƠ GỐC)
+    // (Xử lý các án phạt dài hạn hoặc khi Redis bị mất dữ liệu)
+    // ==================================================================
+    if (user.isSpamming) {
+      const now = new Date();
+      const lastSpamTime = new Date(user.lastSpamTime || 0);
+      // SPAM_BAN_DURATION = 30 * 60 * 1000
+      const releaseTime = new Date(lastSpamTime.getTime() + SPAM_BAN_DURATION);
+
+      // A. Nếu VẪN CÒN trong thời gian phạt
+      if (now < releaseTime) {
+        const minutesLeft = Math.ceil((releaseTime.getTime() - now.getTime()) / 60000);
+        throw new HttpException({
+          status: HttpStatus.FORBIDDEN,
+          error: `Tài khoản đang bị khóa tạm thời. Vui lòng thử lại sau ${minutesLeft} phút.`,
+        }, HttpStatus.FORBIDDEN);
+      }
+
+      // B. Nếu ĐÃ HẾT thời gian phạt (Lazy Unban - Cơ chế phòng thủ)
+      // (Phòng trường hợp CronJob bên User Service bị lỗi chưa mở khóa kịp)
+      else {
+        // Mở khóa Local DB ngay lập tức để user không bị chặn oan
+        await this.userModel.updateOne({ userId }, {
+          $set: { isSpamming: false }
+          // Giữ lại lastSpamTime để truy vết lịch sử nếu cần
+        });
+
+        // Bắn Event báo User Service biết để đồng bộ lại
+        this.amqpConnection.publish('booking_exchange', 'user.spam.cleared', { userId });
+
+        console.log(`[BookingService] Lazy unban triggered for user ${userId}`);
+      }
+    }
+
+    // ==================================================================
+    // 🛑 KHIÊN 2: KIỂM TRA ÁN PHẠT "GĂM HÀNG" TỪ REDIS (TỐC ĐỘ CAO)
+    // (Key này do BookingProcessor tạo ra khi phát hiện bùng kèo 3 lần)
+    // ==================================================================
+    const penaltyKey = `hoarding_penalty:${userId}`;
+    const isPenalized = await this.redisClient.get(penaltyKey);
+
+    if (isPenalized) {
+      const ttl = await this.redisClient.ttl(penaltyKey);
+      throw new HttpException({
+        status: HttpStatus.FORBIDDEN,
+        error: `Bạn đã giữ chỗ không thanh toán quá nhiều lần. Tính năng đặt sân bị khóa trong ${Math.ceil(ttl / 60)} phút.`,
+      }, HttpStatus.FORBIDDEN);
+    }
+
+    // ==================================================================
+    // ✅ 3. TẠO BOOKING (NẾU SẠCH SẼ)
+    // ==================================================================
     const newBooking = new this.bookingModel(data);
 
+    // Check trùng lịch
     const conflicts = await this.findConflictingBookings(
       newBooking.centerId,
       newBooking.bookDate,
@@ -192,33 +268,37 @@ export class BookingService {
     );
 
     if (conflicts.length > 0) {
-      throw new ConflictException('Booking conflict detected for the selected courts and timeslots');
+      throw new ConflictException('Sân đã có người đặt trong khung giờ này.');
     }
 
+    // Check Center
     const center = await this.centerModel.findOne({ centerId: data.centerId }).exec();
     if (!center) {
       throw new NotFoundException('Center not found');
     }
-    const user = await this.userModel.findOne({ userId: data.userId }).exec();
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+
+    // Tính tiền
     let totalPrice = this.calculateTotalPrice(user, center, data.bookDate, newBooking.courtBookingDetails);
     newBooking.price = totalPrice;
+
     const savedBooking = await newBooking.save();
 
+    // ==================================================================
+    // 🕒 4. THÊM VÀO QUEUE ĐỂ CHECK HẾT HẠN (DELAY 5 PHÚT)
+    // ==================================================================
     await this.bookingQueue.add(
       'check-expiry',
       {
-        bookingId: newBooking._id.toString()
+        bookingId: savedBooking._id.toString(),
+        userId: userId // 👈 QUAN TRỌNG: Phải truyền userId để Processor biết ai mà phạt
       },
       {
-        delay: 5 * 60 * 1000,
+        delay: 5 * 60 * 1000, // 5 phút
         removeOnComplete: true
       }
     );
 
-    console.log(`Scheduled auto-cancel for booking ${newBooking._id} in 5 minutes`);
+    console.log(`Scheduled expiry check for booking ${newBooking._id}`);
     return savedBooking;
   }
 
@@ -236,19 +316,13 @@ export class BookingService {
 
   async updateBookingStatus(bookingId: string, status: BookingStatus): Promise<Booking | null> {
     let objectId;
-
-    // 1. Kiểm tra và Chuyển đổi sang ObjectId
     try {
       objectId = new mongoose.Types.ObjectId(bookingId);
     } catch (e) {
-      // Xử lý lỗi nếu chuỗi bookingId không phải là ObjectId hợp lệ (Fail Fast)
       throw new BadRequestException('Invalid booking ID format');
     }
 
-    // 2. Sử dụng ObjectId để truy vấn
     const booking = await this.bookingModel.findById(objectId);
-    // HOẶC: const booking = await this.bookingModel.findOne({ _id: objectId });
-
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
@@ -257,33 +331,56 @@ export class BookingService {
     return booking.save();
   }
 
-  /**
-   * @deprecated Use updateBookingStatus with BookingStatus.PROCESSING instead
-   */
   async updateBookingStatusToProcessing(bookingId: string): Promise<Booking | null> {
     const booking = await this.bookingModel.findById(bookingId);
-
-    if (!booking) {
-      throw new Error('Booking not found');
-    }
-
+    if (!booking) throw new Error('Booking not found');
     booking.bookingStatus = BookingStatus.PROCESSING;
     return booking.save();
   }
 
-  /**
-   * @deprecated Use updateBookingStatus with BookingStatus.CONFIRMED instead
-   */
+  // ==================================================================
+  // 3. LOGIC CẬP NHẬT POINTS & BẮN EVENT RABBITMQ
+  // ==================================================================
   async updateBookingStatusToConfirmed(bookingId: string): Promise<Booking | null> {
     const booking = await this.bookingModel.findById(bookingId);
+    if (!booking) throw new NotFoundException('Booking not found');
 
-    if (!booking) {
-      return null;
+    // 1. Tính điểm (Ví dụ: 1000 VNĐ = 1 điểm)
+    const pointsEarned = Math.floor(booking.price / 1000);
+
+    // 2. Cập nhật trạng thái Booking
+    booking.bookingStatus = BookingStatus.CONFIRMED;
+    booking.pointsEarned = pointsEarned; // Lưu lịch sử điểm vào booking
+    await booking.save();
+
+    // 3. Cập nhật Cache User tại BookingService (Để lần sau đặt sân có điểm mới ngay lập tức)
+    // Dùng $inc để cộng dồn, an toàn hơn set đè
+    await this.userModel.findOneAndUpdate(
+      { userId: booking.userId },
+      { $inc: { points: pointsEarned } }
+    );
+
+    // 4. Bắn Event sang UserService (Source of Truth)
+    // Tại UserService, consumer sẽ nhận event này -> cộng điểm -> tính toán Level mới (Vàng/Bạc...)
+    try {
+      await this.amqpConnection.publish(
+        'booking_exchange',   // Tên Exchange (Phải khớp config module)
+        'user.points.updated', // Routing Key
+        {
+          userId: booking.userId,
+          pointsToAdd: pointsEarned,
+          bookingId: booking._id.toString(),
+          source: 'booking_service',
+          timestamp: new Date()
+        }
+      );
+      console.log(`[RabbitMQ] Sent user.points.updated for User ${booking.userId}: +${pointsEarned} points`);
+    } catch (error) {
+      console.error('[RabbitMQ] Error publishing user.points.updated:', error);
+      // NOTE: Trong môi trường Production, nên có cơ chế retry hoặc lưu vào Outbox table để gửi lại sau
     }
 
-    booking.bookingStatus = BookingStatus.CONFIRMED;
-    booking.pointsEarned = Math.floor(booking.price / 1000);
-    return booking.save();
+    return booking;
   }
 
   async deleteBooking(bookingId: string): Promise<Booking | null> {
@@ -294,6 +391,7 @@ export class BookingService {
     ).exec();
   }
 
+  // ... (Hàm getUserBookingHistory giữ nguyên)
   async getUserBookingHistory(userId: string, queryParams: GetHistoryDto) {
     const {
       page = 1,
@@ -307,7 +405,6 @@ export class BookingService {
 
     const skip = (page - 1) * limit;
 
-    // 1. Xây dựng Filter
     const filter: any = {
       userId,
       isDeleted: false
@@ -346,7 +443,6 @@ export class BookingService {
       }
     }
 
-    // 2. Query DB Booking
     const [totalDocs, bookings] = await Promise.all([
       this.bookingModel.countDocuments(filter),
       this.bookingModel
@@ -357,11 +453,6 @@ export class BookingService {
         .lean(),
     ]);
 
-    // ==========================================================
-    // 🚀 TỐI ƯU HIỆU NĂNG: Lấy dữ liệu liên quan (Center & Court)
-    // ==========================================================
-
-    // B1: Gom tất cả ID cần thiết
     const centerIds = new Set<string>();
     const courtIds = new Set<string>();
 
@@ -374,37 +465,26 @@ export class BookingService {
       }
     });
 
-    // B2: Query 1 lần duy nhất vào Collection Center và Court
-    // (Nhanh hơn việc gọi findOne trong vòng lặp map)
     const [centersList, courtsList] = await Promise.all([
       this.centerModel.find({ centerId: { $in: Array.from(centerIds) } }).select('centerId name').lean(),
-      this.courtModel.find({ courtId: { $in: Array.from(courtIds) } }).select('courtId name').lean() // Lấy tên sân
+      this.courtModel.find({ courtId: { $in: Array.from(courtIds) } }).select('courtId name').lean()
     ]);
 
-    // B3: Tạo Map để tra cứu nhanh
     const centerMap = new Map<string, string>();
     centersList.forEach((c: any) => centerMap.set(c.centerId, c.name));
 
     const courtMap = new Map<string, string>();
     courtsList.forEach((c: any) => courtMap.set(c.courtId, c.name));
 
-
-    // 3. Format dữ liệu trả về
     const formattedData = bookings.map((booking) => {
-      // a. Lấy tên Center từ Map
       const centerName = centerMap.get(booking.centerId) || booking.centerId;
 
-      // b. Format Giờ chơi (Lookup tên Court từ Map)
       const courtTime = booking.courtBookingDetails.map((detail) => {
         const slots = detail.timeslots.sort((a, b) => a - b);
         if (slots.length === 0) return '';
-
         const start = slots[0];
         const end = slots[slots.length - 1] + 1;
-
-        // 👇 LOGIC MỚI: Lấy tên sân từ Map, nếu không có thì fallback về ID
         const courtName = courtMap.get(detail.courtId) || `Sân ${detail.courtId}`;
-
         return `${courtName}: ${start}:00 - ${end}:00`;
       }).join('\n');
 
@@ -421,7 +501,6 @@ export class BookingService {
       };
     });
 
-    // 4. Return
     return {
       bookingHistory: formattedData,
       total: totalDocs,
@@ -431,8 +510,8 @@ export class BookingService {
     };
   }
 
+  // ... (Hàm getUserStatistics giữ nguyên)
   async getUserStatistics(userId: string, period: 'week' | 'month' | 'year' = 'month') {
-    // 1. Xác định khoảng thời gian lọc
     const now = new Date();
     let startDate = new Date();
 
@@ -443,27 +522,22 @@ export class BookingService {
     } else if (period === 'year') {
       startDate.setFullYear(now.getFullYear() - 1);
     } else {
-      // Mặc định lấy từ đầu năm nay
       startDate = new Date(now.getFullYear(), 0, 1);
     }
 
-    // Lấy điểm hiện tại của user (để hiển thị ở overview)
     const user = await this.userModel.findOne({ userId }).lean();
     const currentPoints = user ? user.points : 0;
 
-    // 2. Thực hiện Aggregation Pipeline
     const stats = await this.bookingModel.aggregate([
       {
         $match: {
           userId: userId,
           isDeleted: false,
-          // Chỉ lấy dữ liệu trong khoảng thời gian đã chọn (hoặc bỏ dòng này nếu muốn tính all time cho overview)
           bookDate: { $gte: startDate, $lte: now }
         }
       },
       {
         $facet: {
-          // --- A. TỔNG QUAN (Overview) ---
           overview: [
             {
               $group: {
@@ -478,8 +552,6 @@ export class BookingService {
               }
             }
           ],
-
-          // --- B. BIỂU ĐỒ THEO THÁNG (Chart) ---
           monthly: [
             {
               $group: {
@@ -488,8 +560,6 @@ export class BookingService {
               }
             }
           ],
-
-          // --- C. CƠ SỞ HAY ĐẶT (Frequent Centers) ---
           frequentCenters: [
             {
               $group: {
@@ -500,7 +570,6 @@ export class BookingService {
             },
             { $sort: { count: -1 } },
             { $limit: 5 },
-            // Lookup sang collection centers để lấy tên (Giả sử collection tên là 'centers')
             {
               $lookup: {
                 from: 'centers',
@@ -518,20 +587,17 @@ export class BookingService {
               }
             }
           ],
-
-          // --- D. KHUNG GIỜ PHỔ BIẾN (Time Slots) ---
-          // Chỉ tính các đơn đã hoàn thành để chính xác
           timeDistribution: [
             { $match: { bookingStatus: BookingStatus.CONFIRMED } },
-            { $unwind: '$courtBookingDetails' }, // Bung mảng chi tiết sân
-            { $unwind: '$courtBookingDetails.timeslots' }, // Bung mảng giờ
+            { $unwind: '$courtBookingDetails' },
+            { $unwind: '$courtBookingDetails.timeslots' },
             {
               $group: {
-                _id: '$courtBookingDetails.timeslots', // Group theo giờ (5, 6... 18, 19)
+                _id: '$courtBookingDetails.timeslots',
                 count: { $sum: 1 }
               }
             },
-            { $sort: { count: -1 } } // Sắp xếp giờ nào đặt nhiều nhất lên đầu
+            { $sort: { count: -1 } }
           ]
         }
       }
@@ -539,18 +605,10 @@ export class BookingService {
 
     const result = stats[0];
     const overviewData = result.overview[0] || { total: 0, completed: 0, cancelled: 0 };
-
-    // 3. Xử lý hậu kỳ dữ liệu (Post-processing)
-
-    // Xử lý dữ liệu biểu đồ (Map ra 12 tháng hoặc range tùy ý)
     const processedMonthly = this.processMonthlyStats(result.monthly);
-
-    // Xử lý dữ liệu Giờ (Tính %)
     const timeStats = this.processTimeStats(result.timeDistribution);
-
-    // Xử lý so sánh tăng giảm (Giả lập logic, hoặc cần query thêm kỳ trước để tính)
     const comparison = {
-      totalChange: 12, // Ví dụ: hardcode hoặc tính toán thật
+      totalChange: 12,
       completedChange: 5,
       cancelledChange: -2,
       pointsChange: 10
@@ -567,18 +625,16 @@ export class BookingService {
       comparison,
       monthlyStats: processedMonthly,
       frequentCenters: result.frequentCenters,
-      timeStats // Trả về object đã tính toán %
+      timeStats
     };
   }
 
-  // --- Helper: Xử lý Time Distribution ---
   private processTimeStats(data: any[]) {
     const totalSlots = data.reduce((sum, item) => sum + item.count, 0);
-
     const distribution = { Sáng: 0, Trưa: 0, Chiều: 0, Tối: 0 };
 
     data.forEach(item => {
-      const h = item._id; // Giờ (number)
+      const h = item._id;
       const c = item.count;
       if (h >= 5 && h <= 11) distribution.Sáng += c;
       else if (h >= 12 && h <= 13) distribution.Trưa += c;
@@ -586,7 +642,6 @@ export class BookingService {
       else distribution.Tối += c;
     });
 
-    // Tìm giờ phổ biến nhất
     const mostPopular = data.length > 0 ? data[0] : null;
 
     return {
@@ -601,10 +656,7 @@ export class BookingService {
     };
   }
 
-  // --- Helper: Map Monthly Data ---
   private processMonthlyStats(data: any[]) {
-    // Logic map array mongo result sang mảng chuẩn UI (VD: T1 -> T12)
-    // Code rút gọn cho ví dụ:
     const map = new Map();
     data.forEach(item => {
       const key = item._id.month;
@@ -614,5 +666,18 @@ export class BookingService {
       if (item._id.status === BookingStatus.CANCELLED) entry.cancelled = item.count;
     });
     return Array.from(map.values()).sort((a: any, b: any) => a.month - b.month);
+  }
+
+  async checkExistsPendingBooking(userId: string, centerId: string): Promise<{ exists: boolean }> {
+    console.log(userId, centerId);
+    const pendingBooking = await this.bookingModel.findOne({
+      userId: userId,
+      centerId: centerId,
+      bookingStatus: BookingStatus.PENDING, 
+
+    });
+    console.log(pendingBooking);
+  
+    return { exists: !!pendingBooking }; // Trả về true nếu tìm thấy, false nếu không
   }
 }

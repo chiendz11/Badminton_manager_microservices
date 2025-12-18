@@ -162,28 +162,35 @@ const CenterService = {
     },
 
 
-    // 💡 LOGIC UPDATE CÓ XỬ LÝ FILE RÁC
+    // ---------------------------------------------------------
+    // 💡 FIX LOGIC UPDATE: Xử lý Partial Update an toàn
+    // ---------------------------------------------------------
     async updateCenterInfo(centerId, updateData) {
         // 1. Lấy thông tin center CŨ
         const oldCenter = await Center.findOne({ centerId }).lean();
         if (!oldCenter) throw new Error('Center not found');
 
-        // 2. Lọc bỏ undefined data
+        // 2. Lọc bỏ các key là undefined (quan trọng để tránh ghi đè null bậy bạ)
         Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
 
-        // 3. XỬ LÝ LOGO: Nếu logo thay đổi, xóa logo cũ
-        if (updateData.logoFileId && updateData.logoFileId !== oldCenter.logo_file_id) {
-            if (oldCenter.logo_file_id && oldCenter.logo_file_id !== 'DEFAULT_LOGO_ID') {
-                deleteFileFromStorage(oldCenter.logo_file_id).catch(console.error);
+        // 3. XỬ LÝ LOGO: Chỉ chạy khi field logoFileId có tồn tại trong request
+        if (updateData.logo_file_id !== undefined && updateData.logo_file_id !== oldCenter.logo_file_id) {
+            // Nếu có logo cũ và nó không phải mặc định -> Xóa logo cũ
+            if (oldCenter.logo_file_id && oldCenter.logo_file_id !== DEFAULT_LOGO_FILE_ID) {
+                // Fire & Forget hoặc await tùy độ quan trọng, ở đây log lỗi nếu fail
+                deleteFileFromStorage(oldCenter.logo_file_id).catch(err => 
+                    console.error(`[CenterService] Failed to delete old logo: ${err.message}`)
+                );
             }
         }
 
-        // 4. XỬ LÝ GALLERY: Tìm các ảnh bị xóa khỏi danh sách
-        if (updateData.image_file_ids) {
+        // 4. XỬ LÝ GALLERY: Chỉ chạy khi field image_file_ids có tồn tại (kể cả mảng rỗng)
+        // Nếu updateData.image_file_ids là undefined => User KHÔNG muốn sửa ảnh => Bỏ qua
+        if (updateData.image_file_ids !== undefined) {
             const oldImages = oldCenter.image_file_ids || [];
             const newImages = updateData.image_file_ids || [];
             
-            // Ảnh nào có trong Old mà không có trong New -> Đã bị xóa
+            // Tìm ảnh có trong Old mà không có trong New -> Đã bị user xóa khỏi list
             const deletedImages = oldImages.filter(id => !newImages.includes(id));
             
             if (deletedImages.length > 0) {
@@ -192,14 +199,14 @@ const CenterService = {
             }
         }
         
-        // 5. Cập nhật DB
-        const center = await Center.findOneAndUpdate(
+        // 5. Cập nhật DB với $set (chỉ update các trường có trong updateData)
+        const updatedCenter = await Center.findOneAndUpdate(
             { centerId },
             { $set: updateData },
             { new: true }
         ).lean();
 
-        return center;
+        return updatedCenter;
     },
 
     async deleteCenter(centerId) {

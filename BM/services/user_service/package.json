@@ -21,6 +21,7 @@
     "joi": "^18.0.1",
     "meilisearch": "^0.54.0",
     "mongoose": "^8.19.1",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "node-cron": "^4.2.1"
   }
 }

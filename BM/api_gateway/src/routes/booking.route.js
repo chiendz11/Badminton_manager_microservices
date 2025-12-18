@@ -110,6 +110,14 @@ router.get("/user/me/statistics",
     bookingProxy
 );
 
+router.get("/user/me/exists-pending-booking",
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy
+);
+
 router.get("/user/:userId/booking-history",
     authenticate,
     authorize([

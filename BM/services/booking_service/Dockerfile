@@ -59,7 +59,7 @@ COPY .env ./.env
 COPY --from=builder /app/dist ./dist
 
 # Lệnh mặc định để chạy ứng dụng NestJS đã build
-CMD [ "node", "dist/main" ]
+CMD [ "node", "dist/main.js" ]
 
 # Mở cổng 8082 để khớp với docker-compose của bạn
 EXPOSE 8082

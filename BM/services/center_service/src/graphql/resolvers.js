@@ -1,9 +1,10 @@
+// src/graphql/resolvers.js
+
 import CenterService from '../services/center.service.js';
 import { getBulkUrls } from '../clients/storage.client.js';
 import { Court } from '../models/court.model.js';
 
 const DEFAULT_LOGO_URL = 'https://res.cloudinary.com/default/default-logo.png';
-// Giả sử bạn có ID mặc định trong env hoặc hardcode một string để bypass validation
 const FALLBACK_LOGO_ID = "https://res.cloudinary.com/dm4uxmmtg/image/upload/v1762859721/badminton_app/avatars/default_user_avatar.png";
 
 export const resolvers = {
@@ -17,12 +18,7 @@ export const resolvers = {
             const centerData = {
                 ...args,
                 centerManagerId: args.centerManagerId || context.userId || "USER-ADMIN",
-                
-                // --- FIX LỖI Ở ĐÂY ---
-                // Nếu FE gửi null, gán ID mặc định để DB không báo lỗi "required"
                 logo_file_id: args.logoFileId || FALLBACK_LOGO_ID, 
-                // ---------------------
-
                 image_file_ids: args.imageFileIds || []
             };
             
@@ -34,17 +30,22 @@ export const resolvers = {
         },
 
         updateCenter: async (_, { centerId, data }) => {
-            // Map data từ input GraphQL sang DB model
-            const dbUpdateData = {
-                ...data,
-                image_file_ids: data.imageFileIds,
-                logo_file_id: data.logoFileId
-            };
-            // Xóa các field camelCase thừa để không ghi rác vào DB
-            delete dbUpdateData.imageFileIds;
-            delete dbUpdateData.logoFileId;
+            // Clone data để tránh mutate object gốc
+            const dbUpdateData = { ...data };
 
-            // ✅ Lưu ý: centerManagerId đã nằm trong `...data` nên sẽ được update tự động
+            // 💡 MAPPING QUAN TRỌNG: CamelCase -> snake_case
+            // Chỉ map nếu client thực sự gửi field này lên
+            if (data.imageFileIds !== undefined) {
+                dbUpdateData.image_file_ids = data.imageFileIds;
+                delete dbUpdateData.imageFileIds; // Xóa key cũ
+            }
+
+            if (data.logoFileId !== undefined) {
+                dbUpdateData.logo_file_id = data.logoFileId;
+                delete dbUpdateData.logoFileId; // Xóa key cũ
+            }
+
+            // Gọi service
             return await CenterService.updateCenterInfo(centerId, dbUpdateData);
         },
 
@@ -75,11 +76,7 @@ export const resolvers = {
 
         courts: async (parent) => {
             try {
-                // parent chính là object Center đang được query
-                // Ta tìm tất cả Court có centerId trùng với parent.centerId
-                // Lưu ý: parent.centerId là string UUID (VD: CENTER-a63e...)
-                const courts = await Court.find({ centerId: parent.centerId });
-                return courts;
+                return await Court.find({ centerId: parent.centerId });
             } catch (error) {
                 console.error("Error resolving courts:", error);
                 return [];

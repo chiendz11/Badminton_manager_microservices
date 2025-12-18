@@ -14,32 +14,36 @@ import { Court, CourtSchema } from './Schema/court.schema';
 import { BullModule } from '@nestjs/bullmq';
 import { BookingProcessor } from './booking-expiration.processor';
 import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
-import { connection } from 'mongoose';
 import { UserWorker } from './Worker/user-profile.worker';
+import Redis from 'ioredis';
 
 @Module({
   imports: [
     RabbitMQModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-      uri: configService.get("RABBITMQ_URI") || 'amqp://guest:guest@my_rabbitmq:5672', //not process.env.RABBITMQ_URI
-      exchanges: [
-        {
-          name: 'user_events_exchange',
-          type: 'topic',
-          options: {
-            durable: true,
+        uri: configService.get("RABBITMQ_URI") || 'amqp://guest:guest@my_rabbitmq:5672',
+        exchanges: [
+          // 1. SỬA TÊN EXCHANGE CHO KHỚP VỚI CODE SERVICE
+          {
+            name: 'booking_exchange', // Phải trùng với tên trong amqpConnection.publish()
+            type: 'topic',
           },
+          // Nếu bạn vẫn cần exchange cũ cho tính năng khác thì giữ lại, không thì xóa
+          {
+             name: 'user_events_exchange',
+             type: 'topic',
+          }
+        ],
+        connectionInitOptions: {
+          wait: true,
+          retries: 5,
+          delay: 3000,
         },
-      ],
-      connectionInitOptions: {
-        wait: true,
-        retries: 5,
-        delay: 3000,
-      },
-    }),
+      }),
       inject: [ConfigService],
-  }),
+    }),
+
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -71,20 +75,31 @@ import { UserWorker } from './Worker/user-profile.worker';
     MongooseModule.forFeature([{ name: Center.name, schema: CenterSchema }]),
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     MongooseModule.forFeature([{ name: Court.name, schema: CourtSchema }]),
-
   ],
   controllers: [
-    BookingController, 
+    BookingController,
     CenterController,
     PaymentController,
-
   ],
   providers: [
     BookingService,
     CenterService,
     PaymentService,
     BookingProcessor,
-    UserWorker
+    UserWorker, 
+    
+    // 3. PROVIDER CHO REDIS CLIENT
+    {
+      provide: 'REDIS_CLIENT',
+      useFactory: (configService: ConfigService) => {
+        return new Redis({
+          host: configService.get('REDIS_HOST') || 'redis',
+          port: configService.get('REDIS_PORT') || 6379,
+        });
+      },
+      inject: [ConfigService],
+    },
   ],
+  exports: ['REDIS_CLIENT'],
 })
 export class BookingModule {}
