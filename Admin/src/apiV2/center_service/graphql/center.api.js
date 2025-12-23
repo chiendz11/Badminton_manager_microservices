@@ -109,11 +109,17 @@ const CENTER_SUMMARY_FRAGMENT = `
     avgRating
     totalCourts
     
-    # --- MEDIA: BẮT BUỘC PHẢI CÓ CẢ URL VÀ ID ---
+    # Media
     logoUrl 
-    logoFileId      # <--- QUAN TRỌNG: Để Modal biết ID ảnh cũ
+    logoFileId      
     imageUrlList 
-    imageFileIds    # <--- QUAN TRỌNG: Để Modal biết ID ảnh cũ
+    imageFileIds    
+
+    # 👇 BỔ SUNG PHẦN NÀY ĐỂ getAllCenters TRẢ VỀ GIÁ 👇
+    pricing {
+      weekday { startTime endTime price }
+      weekend { startTime endTime price }
+    }
   }
 `;
 

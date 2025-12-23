@@ -1,15 +1,11 @@
 import { gql } from 'graphql-tag';
 
 export const typeDefs = gql`
-    extend type Query {
-        centers: [Center!]! 
-        center(centerId: String!): Center
-    }
-
+    # --- INPUT TYPES ---
     input TimeSlotInput {
-        startTime: String
-        endTime: String
-        price: Float
+        startTime: String! # Bắt buộc "HH:mm"
+        endTime: String!   # Bắt buộc "HH:mm"
+        price: Float       # Giá tiền
     }
 
     input PricingInput {
@@ -17,7 +13,6 @@ export const typeDefs = gql`
         weekend: [TimeSlotInput]
     }
 
-    # Input Update
     input UpdateCenterInput {
         name: String
         address: String
@@ -27,33 +22,26 @@ export const typeDefs = gql`
         facilities: [String]
         googleMapUrl: String
         isActive: Boolean
+        
         logoFileId: String
         imageFileIds: [String] 
-        pricing: PricingInput
-        centerManagerId: String # ✅ ĐÃ THÊM TRƯỜNG NÀY ĐỂ FIX LỖI
+        
+        pricing: PricingInput # 🟢 Quan trọng cho tính tiền
+        centerManagerId: String
     }
 
-    extend type Mutation {
-        createCenter(
-            name: String!, 
-            address: String!, 
-            phone: String!,
-            description: String,
-            totalCourts: Int,
-            facilities: [String],
-            logoFileId: String,
-            imageFileIds: [String], 
-            googleMapUrl: String,
-            pricing: PricingInput,
-            centerManagerId: String # Cho phép truyền manager ngay lúc tạo (nếu cần)
-        ): Center!
-
-        updateCenter(centerId: String!, data: UpdateCenterInput!): Center!
-
-        deleteCenter(centerId: String!): Boolean!
+    # --- OBJECT TYPES ---
+    type TimeSlot { 
+        startTime: String
+        endTime: String
+        price: Float 
+    }
+    
+    type Pricing { 
+        weekday: [TimeSlot]
+        weekend: [TimeSlot] 
     }
 
-    # 1. Định nghĩa Type Court
     type Court {
         id: ID
         courtId: String!
@@ -82,12 +70,37 @@ export const typeDefs = gql`
         bookingCount: Int
         isActive: Boolean
         centerManagerId: String
-        pricing: Pricing
-
-        # 2. THÊM DÒNG NÀY: Mối quan hệ 1-n
+        
+        # 🟢 2 Field quan trọng frontend cần
+        pricing: Pricing 
         courts: [Court] 
     }
-    
-    type Pricing { weekday: [TimeSlot], weekend: [TimeSlot] }
-    type TimeSlot { startTime: String, endTime: String, price: Float }
+
+    # --- QUERY & MUTATION ---
+    extend type Query {
+        centers: [Center!]! 
+        center(centerId: String!): Center
+    }
+
+    extend type Mutation {
+        createCenter(
+            name: String!, 
+            address: String!, 
+            phone: String!, 
+            description: String, 
+            totalCourts: Int, 
+            facilities: [String], 
+            
+            logoFileId: String,
+            imageFileIds: [String], 
+            googleMapUrl: String,
+            
+            pricing: PricingInput, # 🟢 Input lúc tạo
+            centerManagerId: String
+        ): Center!
+
+        updateCenter(centerId: String!, data: UpdateCenterInput!): Center!
+
+        deleteCenter(centerId: String!): Boolean!
+    }
 `;

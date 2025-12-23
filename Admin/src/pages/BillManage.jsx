@@ -1,568 +1,519 @@
-import React, { useEffect, useState } from "react";
-import { Dialog, Transition } from "@headlessui/react";
-import { getAllBills, updateBillStatus } from "../apis/billManaging";
-import BillImage from "../components/BillImages";
-import {
-  ArrowLeftIcon,
-  PlusIcon, // Có thể xóa nếu không dùng, nhưng tôi giữ lại đề phòng các component khác dùng.
-  CalendarIcon,
-  BuildingOfficeIcon,
-  FunnelIcon,
-  XMarkIcon,
-} from "@heroicons/react/24/outline";
+import React, { useEffect, useState, useContext } from "react";
+import { Dialog } from "@headlessui/react";
+import { useNavigate } from "react-router-dom";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import toast from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
+import {
+  ArrowLeftIcon,
+  CalendarIcon,
+  BuildingOfficeIcon,
+  FunnelIcon,
+  XMarkIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ArrowPathIcon,
+  ClockIcon,
+  CalendarDaysIcon // 🟢 Icon dành riêng cho đơn tháng
+} from "@heroicons/react/24/outline";
+
+// 👇 IMPORT API
+import { getAllBookingsForAdmin } from "../apiV2/booking_service/rest/booking.api";
+import { getAllCentersGQL } from "../apiV2/center_service/graphql/center.api";
+
+// 👇 IMPORT CONTEXT & ROLES
+import { AuthContext } from "../contexts/AuthContext";
+import { ROLES } from "../constants/roles";
 
 const AdminBillList = () => {
-  const navigate = useNavigate();
-  const [bills, setBills] = useState([]);
-  const [filteredBills, setFilteredBills] = useState([]);
-  const [centers, setCenters] = useState([]);
-  const [activeTab, setActiveTab] = useState("all");
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [confirmAction, setConfirmAction] = useState(null);
-  const [selectedBill, setSelectedBill] = useState(null);
-  const [selectedCenter, setSelectedCenter] = useState("");
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [selectedStatus, setSelectedStatus] = useState("");
-  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { admin } = useContext(AuthContext);
 
-  useEffect(() => {
-    const fetchBills = async () => {
-      setLoading(true);
-      try {
-        const billsData = await getAllBills();
-        if (!Array.isArray(billsData)) {
-          throw new Error("Dữ liệu trả về không phải là mảng");
-        }
+  // --- STATE ---
+  const [bills, setBills] = useState([]);
+  const [centers, setCenters] = useState([]);
+  
+  // Filter States
+  const [activeTab, setActiveTab] = useState("all"); 
+  const [selectedCenterId, setSelectedCenterId] = useState("");
+  const [selectedDate, setSelectedDate] = useState(new Date()); 
+  const [selectedStatus, setSelectedStatus] = useState(""); 
 
-        if (billsData.length === 0) {
-          toast.error("Không có dữ liệu bill để hiển thị");
-        }
+  // Pagination States
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
 
-        setBills(billsData);
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedBill, setSelectedBill] = useState(null);
 
-        const uniqueCenters = [...new Set(billsData.map((bill) => bill.centerName))]
-          .filter(name => name) // Loại bỏ giá trị null/undefined
-          .map(name => ({ name }));
-        setCenters(uniqueCenters);
-      } catch (error) {
-        console.error("Lỗi khi lấy danh sách bill:", error.message);
-        toast.error(error.message || "Lỗi khi lấy danh sách bill");
-        setBills([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchBills();
-  }, []);
+  const isSuperAdmin = admin?.role === ROLES.SUPER_ADMIN;
 
-  useEffect(() => {
-    let result = [...bills];
+  // 1. Fetch danh sách Center
+  useEffect(() => {
+    const fetchCenters = async () => {
+      try {
+        const centerList = await getAllCentersGQL();
+        setCenters(centerList || []);
 
-    // Lọc theo loại đơn
-    if (activeTab === "daily") {
-      result = result.filter((bill) => bill.type === "daily");
-    } else if (activeTab === "fixed") {
-      result = result.filter((bill) => bill.type === "fixed");
-    }
+        if (admin?.role === ROLES.CENTER_MANAGER) {
+          if (admin.centerId) {
+            setSelectedCenterId(admin.centerId);
+          } else {
+            const myCenter = centerList.find(c => c.managerId === admin.id);
+            if (myCenter) setSelectedCenterId(myCenter.centerId);
+          }
+        }
+      } catch (error) {
+        console.error("Lỗi lấy center:", error);
+      }
+    };
+    if (admin) fetchCenters();
+  }, [admin]);
 
-    // Lọc theo trạng thái nếu có chọn
-    if (selectedStatus) {
-      result = result.filter((bill) => bill.status === selectedStatus);
-    }
+  // 2. Fetch Bookings (Logic Lọc)
+  const fetchBillsData = async () => {
+    if (admin?.role === ROLES.CENTER_MANAGER && !selectedCenterId) return;
 
-    // Lọc theo trung tâm
-    if (selectedCenter) {
-      result = result.filter((bill) => bill.centerName === selectedCenter);
-    }
+    setLoading(true);
+    try {
+      // 🟢 Mapping Tab -> Query Param
+      let typeParam = "";
+      if (activeTab === "daily") typeParam = "daily";
+      if (activeTab === "fixed") typeParam = "monthly"; 
 
-    // Lọc theo ngày
-    if (selectedDate) {
-      result = result.filter((bill) => {
-        const billDate = new Date(bill.createdAt);
-        const selected = new Date(selectedDate);
-        // Chuẩn hóa múi giờ
-        billDate.setHours(0, 0, 0, 0);
-        selected.setHours(0, 0, 0, 0);
-        return billDate.getTime() === selected.getTime();
-      });
-    }
+      const params = {
+        page,
+        limit,
+        type: typeParam,
+        status: selectedStatus,
+        centerId: selectedCenterId, 
+        date: selectedDate ? selectedDate.toISOString() : "",
+      };
 
-    setFilteredBills(result);
-  }, [bills, activeTab, selectedCenter, selectedDate, selectedStatus]);
+      const response = await getAllBookingsForAdmin(params);
+      setBills(response.data || []);
+      setTotalPages(response.totalPages || 1);
+    } catch (error) {
+      console.error("Lỗi fetch bills:", error);
+      toast.error("Không thể tải danh sách đơn hàng");
+      setBills([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const handleApproveBill = (bill) => {
-    setSelectedBill(bill);
-    setConfirmAction("approve");
-    setIsConfirmModalOpen(true);
-  };
+  useEffect(() => {
+    const timeoutId = setTimeout(() => { fetchBillsData(); }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [page, activeTab, selectedStatus, selectedCenterId, selectedDate]);
 
-  const handleCancelBill = (bill) => {
-    setSelectedBill(bill);
-    setConfirmAction("cancel");
-    setIsConfirmModalOpen(true);
-  };
+  useEffect(() => { setPage(1); }, [activeTab, selectedStatus, selectedCenterId, selectedDate]);
 
-  const confirmActionHandler = async () => {
-    if (!selectedBill || !confirmAction) return;
+  // --- HANDLERS ---
+  const handleResetFilters = () => {
+    setActiveTab("all");
+    setSelectedStatus("");
+    setSelectedDate(new Date());
+    setPage(1);
+    if (isSuperAdmin) setSelectedCenterId("");
+    toast.success("Đã đặt lại bộ lọc mặc định");
+  };
 
-    // Với fixed bookings, _id là mảng, lấy _id đầu tiên
-    const billId = Array.isArray(selectedBill._id) ? selectedBill._id[0] : selectedBill._id;
+  const toggleAllTime = () => {
+    if (selectedDate === null) setSelectedDate(new Date()); 
+    else setSelectedDate(null);
+  };
 
-    if (!billId) {
-      toast.error(
-        confirmAction === "approve"
-          ? "Duyệt đơn hàng thất bại: Không tìm thấy ID của đơn hàng!"
-          : "Hủy đơn hàng thất bại: Không tìm thấy ID của đơn hàng!"
-      );
-      setIsConfirmModalOpen(false);
-      return;
-    }
+  const handleBack = () => navigate(-1);
+  const handleBillClick = (bill) => { setSelectedBill(bill); setIsModalOpen(true); };
 
-    try {
-      const updatedBill = await updateBillStatus(
-        billId,
-        confirmAction === "approve" ? "paid" : "cancelled"
-      );
-      setBills(bills.map((b) => {
-        const bId = Array.isArray(b._id) ? b._id[0] : b._id;
-        return bId === updatedBill._id ? updatedBill : b;
-      }));
-      if (confirmAction === "approve") {
-        setSelectedBill(updatedBill);
-        toast.success("Đã duyệt đơn hàng thành công!");
-      } else {
-        setIsModalOpen(false);
-        toast.success("Đã hủy đơn hàng thành công!");
-      }
-    } catch (error) {
-      console.error(
-        confirmAction === "approve" ? "Lỗi khi duyệt đơn hàng:" : "Lỗi khi hủy đơn hàng:",
-        error
-      );
-      toast.error(
-        confirmAction === "approve"
-          ? `Duyệt đơn hàng thất bại: ${error.message || "Lỗi không xác định"}!`
-          : `Hủy đơn hàng thất bại: ${error.message || "Lỗi không xác định"}!`
-      );
-    } finally {
-      setIsConfirmModalOpen(false);
-      setConfirmAction(null);
-    }
-  };
+  const getCenterName = (centerId) => {
+    const center = centers.find(c => c.centerId === centerId);
+    return center ? center.name : centerId || "N/A";
+  };
 
-  const handleBack = () => {
-    navigate(-1);
-  };
+  const getStatusText = (status) => {
+    const map = { pending: "Chưa thanh toán", confirmed: "Đã xác nhận", cancelled: "Đã hủy", failed: "Thất bại" };
+    return map[status] || status || "N/A";
+  };
 
-  // XÓA: function handleCreateBooking không còn cần thiết
+  const getStatusBadgeClass = (status) => {
+    switch (status) {
+      case "confirmed": return "bg-green-100 text-green-800";
+      case "pending": return "bg-yellow-100 text-yellow-800";
+      case "cancelled": case "failed": return "bg-red-100 text-red-800";
+      default: return "bg-gray-100 text-gray-800";
+    }
+  };
 
-  const handleBillClick = (bill) => {
-    setSelectedBill(bill);
-    setIsModalOpen(true);
-  };
+  return (
+    <div className="bg-gray-100 min-h-screen w-full font-inter">
+      <div className="bg-white w-full shadow-md overflow-hidden pb-4">
+        
+        {/* HEADER: Gọn gàng, không nút thừa */}
+        <div className="bg-emerald-700 text-white p-4 shadow-md sticky top-0 z-10">
+            <div className="flex items-center gap-3">
+                <button onClick={handleBack} className="hover:bg-emerald-600 rounded-full p-2 transition-colors">
+                    <ArrowLeftIcon className="h-6 w-6" />
+                </button>
+                <div>
+                    <h1 className="text-xl font-bold leading-none">Quản lý Đơn đặt sân</h1>
+                    <p className="text-emerald-100 text-sm mt-1 opacity-90">
+                        {isSuperAdmin ? "Toàn bộ hệ thống" : getCenterName(selectedCenterId)}
+                    </p>
+                </div>
+            </div>
+        </div>
 
-  const handleImageClick = (imageUrl) => {
-    if (!imageUrl || !imageUrl.startsWith("data:image/")) {
-      toast.error("Ảnh không hợp lệ!");
-      return;
-    }
-    setSelectedImage(imageUrl);
-    setIsImageModalOpen(true);
-  };
+        {/* --- FILTERS CONTAINER --- */}
+        <div className="p-4 space-y-4 border-b border-gray-200 bg-gray-50/50">
+            <div className="flex flex-col lg:flex-row gap-4">
+                
+                {/* 1. Center Selector */}
+                <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Trung tâm</label>
+                    <div className="relative">
+                        <select
+                            value={selectedCenterId}
+                            onChange={(e) => isSuperAdmin && setSelectedCenterId(e.target.value)}
+                            disabled={!isSuperAdmin} 
+                            className={`w-full border rounded-lg p-2.5 pl-10 text-sm outline-none focus:ring-2 focus:ring-emerald-500 transition-shadow appearance-none
+                                ${!isSuperAdmin ? "bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200" : "bg-white border-gray-300 cursor-pointer shadow-sm"}
+                            `}
+                        >
+                            {isSuperAdmin && <option value="">Tất cả trung tâm</option>}
+                            {centers.map((center) => (
+                                <option key={center.centerId} value={center.centerId}>{center.name}</option>
+                            ))}
+                        </select>
+                        <BuildingOfficeIcon className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 ${!isSuperAdmin ? "text-gray-400" : "text-emerald-500"}`} />
+                    </div>
+                </div>
 
-  const getStatusText = (status) => {
-    switch (status) {
-      case "pending":
-        return "Chưa thanh toán";
-      case "processing":
-        return "Chờ xử lý";
-      case "paid":
-        return "Đã thanh toán";
-      case "cancelled":
-        return "Đã hủy";
-      default:
-        return status || "Không xác định";
-    }
-  };
+                {/* 2. Date Filter */}
+                <div className="flex-1 min-w-[280px]">
+                     <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Thời gian</label>
+                     <div className="flex shadow-sm rounded-lg overflow-hidden border border-gray-300">
+                        <div className={`relative flex-1 transition-colors ${selectedDate === null ? 'bg-gray-100' : 'bg-white'}`}>
+                            <DatePicker
+                                selected={selectedDate}
+                                onChange={(date) => setSelectedDate(date)}
+                                dateFormat="dd/MM/yyyy"
+                                placeholderText="Chọn ngày..."
+                                disabled={selectedDate === null} 
+                                className={`w-full p-2.5 pl-10 text-sm outline-none bg-transparent cursor-pointer
+                                    ${selectedDate === null ? 'text-gray-400' : 'text-gray-800'}
+                                `}
+                            />
+                            <CalendarIcon className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 ${selectedDate === null ? 'text-gray-400' : 'text-emerald-500'}`} />
+                        </div>
 
-  const getStatusBadgeClass = (status) => {
-    switch (status) {
-      case "paid":
-        return "bg-green-600 text-white";
-      case "pending":
-        return "bg-yellow-500 text-white";
-      case "processing":
-        return "bg-orange-500 text-white";
-      case "cancelled":
-        return "bg-red-500 text-white";
-      default:
-        return "bg-gray-500 text-white";
-    }
-  };
+                        <button 
+                            onClick={toggleAllTime}
+                            className={`px-3 text-xs font-medium border-l border-gray-300 transition-colors whitespace-nowrap flex items-center gap-1
+                                ${selectedDate === null 
+                                    ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                                }
+                            `}
+                            title="Xem toàn bộ lịch sử"
+                        >
+                            {selectedDate === null ? <><ClockIcon className="h-4 w-4" /> Toàn bộ</> : "Xem tất cả"}
+                        </button>
+                     </div>
+                </div>
 
-  const getBillTypeText = (type) => {
-    switch (type) {
-      case "daily":
-        return "Đơn ngày";
-      case "fixed":
-        return "Đơn cố định";
-      default:
-        return type || "Không xác định";
-    }
-  };
+                {/* 3. Status Filter */}
+                <div className="flex-1 min-w-[200px]">
+                     <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Trạng thái</label>
+                     <div className="relative">
+                        <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg p-2.5 pl-10 text-sm outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-sm bg-white"
+                        >
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="confirmed">Đã xác nhận</option>
+                        <option value="pending">Chưa thanh toán</option>
+                        <option value="cancelled">Đã hủy</option>
+                        </select>
+                        <FunnelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-500" />
+                    </div>
+                </div>
+                
+                {/* 4. Reset Button */}
+                <div className="flex items-end">
+                    <button
+                        onClick={handleResetFilters}
+                        className="h-[42px] px-4 rounded-lg border border-gray-300 bg-white text-gray-600 hover:text-emerald-600 hover:border-emerald-500 hover:bg-emerald-50 transition-all flex items-center gap-2 shadow-sm font-medium text-sm"
+                        title="Về mặc định"
+                    >
+                        <ArrowPathIcon className="h-5 w-5" />
+                        <span className="hidden xl:inline">Đặt lại</span>
+                    </button>
+                </div>
+            </div>
+        </div>
 
-  return (
-    <div className="bg-gray-100 min-h-screen w-full font-inter">
-      <div className="bg-white w-full shadow-md overflow-hidden">
-        <div className="bg-emerald-700 text-white flex items-center p-3">
-          <button onClick={handleBack} className="mr-2">
-            <ArrowLeftIcon className="h-6 w-6" />
-          </button>
-          <h1 className="text-lg font-semibold flex-1 text-center">Danh sách đơn</h1>
-        </div>
+        {/* TABS (Loại đơn - Visual Filter) */}
+        <div className="flex justify-center bg-white border-b shadow-sm">
+          {/* Daily Tab */}
+          <button
+            onClick={() => setActiveTab("daily")}
+            className={`flex-1 py-3 text-sm font-semibold transition-all border-b-2 flex items-center justify-center gap-2 ${
+                activeTab === "daily"
+                  ? "text-emerald-700 border-emerald-600 bg-emerald-50/50"
+                  : "text-gray-500 border-transparent hover:text-emerald-600 hover:bg-gray-50"
+              }`}
+          >
+             <CalendarIcon className="h-4 w-4" /> Đơn ngày
+          </button>
 
-        <div className="flex flex-col sm:flex-row justify-between items-center px-4 py-3 gap-4 bg-white border-b">
-          <div className="flex items-center w-full sm:w-1/2">
-            <label htmlFor="centerFilter" className="text-sm font-medium text-gray-700 mr-2">
-              Trung tâm:
-            </label>
-            <div className="relative flex-1 min-w-[200px] cursor-pointer">
-              <select
-                id="centerFilter"
-                value={selectedCenter}
-                onChange={(e) => setSelectedCenter(e.target.value)}
-                className="border border-gray-300 rounded-md p-2 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full"
-              >
-                <option value="">Tất cả</option>
-                {centers.map((center, index) => (
-                  <option key={index} value={center.name}>
-                    {center.name}
-                  </option>
-                ))}
-              </select>
-              <BuildingOfficeIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-emerald-500" />
-            </div>
-          </div>
-          <div className="flex items-center w-full sm:w-1/2">
-            <label className="text-sm font-medium text-gray-700 mr-2">Chọn ngày:</label>
-            <div className="relative flex-1 min-w-[200px] cursor-pointer">
-              <DatePicker
-                selected={selectedDate}
-                onChange={(date) => setSelectedDate(date)}
-                dateFormat="dd/MM/yyyy"
-                placeholderText="Chọn ngày"
-                className="border border-emerald-500 rounded-md p-2 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full bg-emerald-50 cursor-pointer caret-transparent"
-                onKeyDown={(e) => e.preventDefault()}
-              />
-              <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-emerald-500" />
-            </div>
-          </div>
-        </div>
+          {/* Fixed Tab */}
+          <button
+            onClick={() => setActiveTab("fixed")}
+            className={`flex-1 py-3 text-sm font-semibold transition-all border-b-2 flex items-center justify-center gap-2 ${
+                activeTab === "fixed"
+                  ? "text-blue-700 border-blue-600 bg-blue-50/50" // 🟢 Màu xanh dương riêng biệt
+                  : "text-gray-500 border-transparent hover:text-blue-600 hover:bg-blue-50"
+              }`}
+          >
+             <CalendarDaysIcon className="h-4 w-4" /> Đơn cố định
+          </button>
+          
+          {/* All Tab */}
+          <button
+            onClick={() => setActiveTab("all")}
+            className={`flex-1 py-3 text-sm font-semibold transition-all border-b-2 ${
+                activeTab === "all"
+                  ? "text-gray-800 border-gray-800 bg-gray-50"
+                  : "text-gray-500 border-transparent hover:text-gray-800"
+              }`}
+          >
+             Tất cả
+          </button>
+        </div>
 
-        {(activeTab === "daily" || activeTab === "all") && (
-          <div className="flex items-center px-4 py-3 bg-white border-b">
-            <label htmlFor="statusFilter" className="text-sm font-medium text-gray-700 mr-2">
-              Trạng thái:
-            </label>
-            <div className="relative flex-1 min-w-[200px] cursor-pointer">
-              <select
-                id="statusFilter"
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="border border-gray-300 rounded-md p-2 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 w-full"
-              >
-                <option value="">Tất cả</option>
-                <option value="processing">Đang chờ duyệt</option>
-                <option value="paid">Đã hoàn thành</option>
-                <option value="pending">Chưa thanh toán</option>
-                <option value="cancelled">Đã hủy</option>
-              </select>
-              <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-emerald-500" />
-            </div>
-          </div>
-        )}
+        {/* LIST - VISUALIZATION CORE */}
+        <div className="bg-white min-h-[300px]">
+          {loading ? (
+            <div className="flex flex-col justify-center items-center h-60 text-gray-500">
+               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mb-3"></div>
+               <span className="text-sm">Đang tải dữ liệu...</span>
+            </div>
+          ) : bills.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                <div className="bg-gray-100 p-4 rounded-full mb-3">
+                    <FunnelIcon className="h-8 w-8 text-gray-300" />
+                </div>
+                <span className="italic">Không tìm thấy đơn hàng nào phù hợp</span>
+            </div>
+          ) : (
+            bills.map((bill) => {
+               const billId = bill._id || "N/A";
+               const centerName = getCenterName(bill.centerId);
+               
+               // 🟢 Logic phân loại màu sắc: MONTHLY (Blue) vs DAILY (Emerald)
+               const isMonthly = bill.bookingType === 'monthly';
+               const themeColor = isMonthly ? 'blue' : 'emerald';
+               const themeBg = isMonthly ? 'bg-blue-50' : 'bg-emerald-50';
+               const themeText = isMonthly ? 'text-blue-600' : 'text-emerald-600';
+               const themeBorder = isMonthly ? 'border-blue-200' : 'border-emerald-200';
+               const themeBadgeBg = isMonthly ? 'bg-blue-100' : 'bg-emerald-100';
+               const themeBadgeText = isMonthly ? 'text-blue-800' : 'text-emerald-800';
 
-        <div className="flex justify-around bg-white px-3 py-2 border-b text-sm font-semibold">
-          <button
-            onClick={() => setActiveTab("daily")}
-            className={`flex flex-col items-center relative ${activeTab === "daily"
-                ? "text-emerald-600 font-bold border-b-2 border-emerald-600"
-                : "text-gray-600 hover:text-emerald-500"
-              }`}
-          >
-            <div>Đơn ngày</div>
-          </button>
-          <button
-            onClick={() => setActiveTab("fixed")}
-            className={`flex flex-col items-center relative ${activeTab === "fixed"
-                ? "text-emerald-600 font-bold border-b-2 border-emerald-600"
-                : "text-gray-600 hover:text-emerald-500"
-              }`}
-          >
-            <div>Đơn cố định</div>
-          </button>
-          <button
-            onClick={() => setActiveTab("all")}
-            className={`flex flex-col items-center relative ${activeTab === "all"
-                ? "text-emerald-600 font-bold border-b-2 border-emerald-600"
-                : "text-gray-600 hover:text-emerald-500"
-              }`}
-          >
-            <div>Tất cả</div>
-          </button>
-        </div>
+               return (
+                <div
+                  key={billId}
+                  className={`border-b p-4 cursor-pointer hover:bg-opacity-70 transition-colors flex items-start gap-4 group ${isMonthly ? 'hover:bg-blue-50' : 'hover:bg-emerald-50'}`}
+                  onClick={() => handleBillClick(bill)}
+                >
+                  {/* 🟢 Icon loại đơn (Visual Cue) */}
+                  <div className={`mt-1 h-12 w-12 rounded-xl flex items-center justify-center shrink-0 border shadow-sm ${themeBg} ${themeText} ${themeBorder}`}>
+                      {isMonthly ? <CalendarDaysIcon className="h-6 w-6" /> : <CalendarIcon className="h-6 w-6" />}
+                  </div>
 
-        <div className="bg-white min-h-[200px]">
-          {loading ? (
-            <div className="text-center py-4 text-gray-500">Đang tải dữ liệu...</div>
-          ) : filteredBills.length === 0 ? (
-            <div className="text-center py-4 text-gray-500 italic">Không tìm thấy đơn</div>
-          ) : (
-            filteredBills.map((bill) => {
-              const billId = Array.isArray(bill._id) ? bill._id[0] : bill._id;
-              return (
-                <div
-                  key={billId}
-                  className="border-b p-3 cursor-pointer hover:bg-gray-50 flex items-start space-x-3"
-                  onClick={() => handleBillClick(bill)}
-                >
-                  <div className="flex-1">
-                    <div className="flex space-x-2 mb-1">
-                      {bill.status && (
-                        <span
-                          className={`px-2 py-1 rounded-md text-xs font-semibold ${getStatusBadgeClass(bill.status)}`}
-                        >
-                          {getStatusText(bill.status)}
-                        </span>
-                      )}
-                      {bill.type && (
-                        <span
-                          className={`px-2 py-1 rounded-md text-xs font-semibold text-white bg-blue-500`}
-                        >
-                          {getBillTypeText(bill.type)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="font-semibold text-gray-800">{bill.userName || "N/A"}</div>
-                    <div className="text-sm text-gray-600">Mã đơn: {bill.bookingCode || "N/A"}</div>
-                    <div className="text-sm text-gray-600">
-                      Chi tiết: ({new Date(bill.createdAt).toLocaleDateString("vi-VN")}); {bill.courtTime || "N/A"}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      Thời gian đến chơi:{" "}
-                      {bill.type === "fixed" ? (
-                        <>
-                          Từ {new Date(bill.startDate).toLocaleDateString("vi-VN")} đến{" "}
-                          {new Date(bill.endDate).toLocaleDateString("vi-VN")}
-                        </>
-                      ) : (
-                        new Date(bill.date).toLocaleDateString("vi-VN")
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start mb-1">
+                       <span className={`font-bold text-lg group-hover:underline ${isMonthly ? 'text-blue-900' : 'text-gray-800'}`}>
+                         {bill.userName || "Khách vãng lai"}
+                       </span>
+                       <span className="text-xs text-gray-400 font-mono">{new Date(bill.bookDate).toLocaleDateString("vi-VN")}</span>
+                    </div>
+                    
+                    {/* Badge loại đơn rõ ràng hơn */}
+                    <div className="text-sm text-gray-600 mb-2 flex items-center gap-2 mt-1">
+                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide border ${themeBadgeBg} ${themeBadgeText} ${themeBorder}`}>
+                            {isMonthly ? 'Cố định' : 'Lẻ'}
+                        </span>
+                        <span className="text-gray-300">|</span>
+                        <span className="font-medium text-gray-700 flex items-center gap-1">
+                            <BuildingOfficeIcon className="h-3 w-3 text-gray-400"/>
+                            {centerName}
+                        </span>
+                    </div>
 
-        {/* XÓA: Nút "Tạo lịch đặt" đã được loại bỏ */}
-      </div>
+                    <div>
+                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusBadgeClass(bill.bookingStatus)} border-opacity-20`}>
+                          {getStatusText(bill.bookingStatus)}
+                       </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col items-end justify-center h-full">
+                    <div className={`font-bold text-lg ${isMonthly ? 'text-blue-700' : 'text-emerald-700'}`}>
+                        {(bill.price || 0).toLocaleString()} đ
+                    </div>
+                    {isMonthly && (
+                        <span className="text-[10px] text-blue-400 mt-1 italic font-medium">Auto-confirm</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
 
-      {/* Modal chi tiết đơn hàng */}
-      {isModalOpen && selectedBill && (
-        <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)}>
-          <div className="fixed inset-0 bg-black/30" />
-          <div className="fixed inset-0 flex items-center justify-center p-4">
-            <Dialog.Panel className="bg-white p-6 rounded-lg max-w-lg w-full">
-              <Dialog.Title className="text-lg font-semibold text-gray-800">Chi tiết đơn</Dialog.Title>
-              <div className="mt-4 space-y-2">
-                <div>
-                  <strong>Tên:</strong> {selectedBill.userName || "N/A"}
-                </div>
-                <div>
-                  <strong>Mã đơn:</strong> {selectedBill.bookingCode || "N/A"}
-                </div>
-                <div>
-                  <strong>Chi tiết sân:</strong> {selectedBill.courtTime || "N/A"}
-                </div>
-                <div>
-                  <strong>Trạng thái:</strong>{" "}
-                  <span
-                    className={`px-2 py-1 rounded-md text-xs ${getStatusBadgeClass(selectedBill.status)}`}
-                  >
-                    {getStatusText(selectedBill.status)}
-                  </span>
-                </div>
-                <div>
-                  <strong>Loại đơn:</strong>{" "}
-                  <span
-                    className={`px-2 py-1 rounded-md text-xs text-white bg-blue-500`}
-                  >
-                    {getBillTypeText(selectedBill.type)}
-                  </span>
-                </div>
-                <div>
-                  <strong>Trung tâm:</strong> {selectedBill.centerName || "N/A"}
-                </div>
-                <div>
-                  <strong>Thời gian đến chơi:</strong>{" "}
-                  {selectedBill.type === "fixed" ? (
-                    <>
-                      Từ {new Date(selectedBill.startDate).toLocaleDateString("vi-VN")} đến{" "}
-                      {new Date(selectedBill.endDate).toLocaleDateString("vi-VN")}
-                    </>
-                  ) : (
-                    new Date(selectedBill.date).toLocaleDateString("vi-VN")
-                  )}
-                </div>
-                <div>
-                  <strong>Thời gian tạo:</strong>{" "}
-                  {new Date(selectedBill.createdAt).toLocaleDateString("vi-VN")}
-                </div>
-                <div>
-                  <strong>Ghi chú:</strong> {selectedBill.note || "Không có ghi chú"}
-                </div>
-                <div>
-                  <strong>Tổng giá tiền:</strong> {(selectedBill.totalAmount || 0).toLocaleString("vi-VN")} VNĐ
-                </div>
-                <div>
-                  <strong>Ảnh thanh toán:</strong>{" "}
-                  {selectedBill.paymentImage ? (
-                    <BillImage bill={selectedBill} onImageClick={handleImageClick} />
-                  ) : (
-                    "Không có ảnh"
-                  )}
-                </div>
-              </div>
-              <div className="mt-4 flex justify-end space-x-2">
-                {selectedBill.status === "processing" && (
-                  <button
-                    onClick={() => handleApproveBill(selectedBill)}
-                    className="bg-green-500 text-white px-4 py-2 rounded-md"
-                  >
-                    Duyệt
-                  </button>
-                )}
-                {(selectedBill.status === "pending" || selectedBill.status === "processing") && (
-                  <button
-                    onClick={() => handleCancelBill(selectedBill)}
-                    className="bg-red-500 text-white px-4 py-2 rounded-md"
-                  >
-                    Hủy
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="bg-gray-300 text-gray-700 px-4 py-2 rounded-md"
-                >
-                  Đóng
-                </button>
-              </div>
-            </Dialog.Panel>
-          </div>
-        </Dialog>
-      )}
+        {/* PAGINATION */}
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center space-x-4 mt-4 px-4 pb-4">
+            <button
+              onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+              disabled={page === 1}
+              className={`p-2 rounded-full border transition-colors ${
+                  page === 1 
+                  ? 'text-gray-300 border-gray-200 cursor-not-allowed' 
+                  : 'text-emerald-600 border-emerald-600 hover:bg-emerald-50'
+              }`}
+            >
+              <ChevronLeftIcon className="h-5 w-5" />
+            </button>
+            <span className="text-sm font-medium text-gray-700">
+              Trang <span className="font-bold text-emerald-700">{page}</span> / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={page === totalPages}
+              className={`p-2 rounded-full border transition-colors ${
+                  page === totalPages 
+                  ? 'text-gray-300 border-gray-200 cursor-not-allowed' 
+                  : 'text-emerald-600 border-emerald-600 hover:bg-emerald-50'
+              }`}
+            >
+              <ChevronRightIcon className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+      </div>
 
-      {/* Modal phóng to ảnh */}
-      {isImageModalOpen && selectedImage && (
-        <Dialog open={isImageModalOpen} onClose={() => setIsImageModalOpen(false)}>
-          <div className="fixed inset-0 bg-black bg-opacity-50" />
-          <div className="fixed inset-0 flex items-center justify-center p-4">
-            <Dialog.Panel className="relative bg-white p-4 rounded-lg max-w-4xl w-full">
-              <button
-                onClick={() => setIsImageModalOpen(false)}
-                className="absolute top-2 right-2 text-gray-700 hover:text-gray-900"
-              >
-                <XMarkIcon className="h-6 w-6" />
-              </button>
-              <img
-                src={selectedImage}
-                alt="Enlarged payment confirmation"
-                style={{
-                  maxWidth: "100%",
-                  maxHeight: "80vh",
-                  height: "auto",
-                  borderRadius: "8px",
-                }}
-              />
-            </Dialog.Panel>
-          </div>
-        </Dialog>
-      )}
+      {/* --- MODAL CHI TIẾT (Logic hiển thị đồng bộ) --- */}
+      {isModalOpen && selectedBill && (
+        <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)}>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" />
+          <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+            <Dialog.Panel className="bg-white p-6 rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto transform transition-all">
+              <div className="flex justify-between items-center mb-5 border-b pb-3">
+                  <Dialog.Title className="text-xl font-bold text-gray-800">Chi tiết Booking</Dialog.Title>
+                  <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full p-1 transition-colors">
+                      <XMarkIcon className="h-5 w-5"/>
+                  </button>
+              </div>
+              
+              <div className="space-y-4 text-sm">
+                <div className="grid grid-cols-3 gap-2">
+                    <span className="text-gray-500">Khách hàng:</span>
+                    <span className="col-span-2 font-medium text-gray-900 text-lg">{selectedBill.userName}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                    <span className="text-gray-500">Trung tâm:</span>
+                    <span className="col-span-2 font-medium text-gray-900">{getCenterName(selectedBill.centerId)}</span>
+                </div>
+                
+                {/* 🟢 Visual Badge trong Modal */}
+                <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="text-gray-500">Loại đơn:</span>
+                    <span className="col-span-2 font-medium">
+                        {selectedBill.bookingType === 'monthly' ? (
+                            <span className="flex items-center gap-1 text-blue-700 font-bold bg-blue-100 px-2 py-1 rounded w-fit">
+                                <CalendarDaysIcon className="h-4 w-4"/> Cố định theo tháng
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1 text-emerald-700 font-bold bg-emerald-100 px-2 py-1 rounded w-fit">
+                                <CalendarIcon className="h-4 w-4"/> Đặt theo ngày
+                            </span>
+                        )}
+                    </span>
+                </div>
 
-      {/* Modal xác nhận */}
-      <Transition show={isConfirmModalOpen} as={React.Fragment}>
-        <Dialog as="div" className="relative z-10" onClose={() => setIsConfirmModalOpen(false)}>
-          <Transition.Child
-            as={React.Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-black bg-opacity-25" />
-          </Transition.Child>
+                <div className="grid grid-cols-3 gap-2 items-center">
+                    <span className="text-gray-500">Trạng thái:</span>
+                    <span className="col-span-2">
+                        <span className={`px-2.5 py-1 rounded text-xs font-bold ${getStatusBadgeClass(selectedBill.bookingStatus)}`}>
+                            {getStatusText(selectedBill.bookingStatus)}
+                        </span>
+                    </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                    <span className="text-gray-500">Ngày chơi:</span>
+                    <span className="col-span-2 font-medium">
+                        {selectedBill.bookDate ? new Date(selectedBill.bookDate).toLocaleDateString("vi-VN") : "N/A"}
+                    </span>
+                </div>
+                
+                <div className="border-t border-gray-100 pt-3 mt-2">
+                    <span className="text-gray-500 block mb-2 font-medium">Lịch đặt sân:</span>
+                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 space-y-2">
+                        {selectedBill.courtBookingDetails?.map((detail, idx) => (
+                            <div key={idx} className="text-gray-700 flex justify-between items-center bg-white p-2 rounded border border-gray-100 shadow-sm">
+                                <span className="font-medium text-emerald-700">Sân {detail.courtId}</span>
+                                <div className="flex gap-2">
+                                     {detail.timeslots.map(slot => (
+                                         <span key={slot} className="font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded text-xs border">
+                                             {slot}:00 - {slot + 1}:00
+                                         </span>
+                                     ))}
+                                </div>
+                            </div>
+                        ))}
+                        {(!selectedBill.courtBookingDetails || selectedBill.courtBookingDetails.length === 0) && (
+                            <span className="text-gray-400 italic text-xs">Không có thông tin chi tiết</span>
+                        )}
+                    </div>
+                </div>
 
-          <div className="fixed inset-0 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4 text-center">
-              <Transition.Child
-                as={React.Fragment}
-                enter="ease-out duration-300"
-                enterFrom="opacity-0 scale-95"
-                enterTo="opacity-100 scale-100"
-                leave="ease-in duration-200"
-                leaveFrom="opacity-100 scale-100"
-                leaveTo="opacity-0 scale-95"
-              >
-                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
-                  <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
-                    {confirmAction === "approve" ? "Xác nhận duyệt đơn hàng" : "Xác nhận hủy đơn hàng"}
-                  </Dialog.Title>
-                  <div className="mt-2">
-                    <p className="text-sm text-gray-500">
-                      {confirmAction === "approve"
-                        ? "Bạn có chắc chắn muốn duyệt đơn hàng này không? Hành động này không thể hoàn tác."
-                        : "Bạn có chắc chắn muốn hủy đơn hàng này không? Hành động này không thể hoàn tác."}
-                    </p>
-                  </div>
+                <div className="flex justify-between items-center border-t pt-4 mt-2">
+                    <span className="text-gray-600 font-bold text-base">Tổng thanh toán:</span>
+                    <span className={`font-bold text-2xl ${selectedBill.bookingType === 'monthly' ? 'text-blue-600' : 'text-emerald-600'}`}>
+                        {(selectedBill.price || 0).toLocaleString()} <span className="text-sm">VNĐ</span>
+                    </span>
+                </div>
+                
+                {selectedBill.note && (
+                    <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100 mt-2">
+                        <span className="text-yellow-700 font-semibold text-xs uppercase block mb-1">Ghi chú</span>
+                        <span className="italic text-gray-700">{selectedBill.note}</span>
+                    </div>
+                )}
+              </div>
 
-                  <div className="mt-4 flex justify-end space-x-2">
-                    <button
-                      type="button"
-                      className="inline-flex justify-center rounded-md border border-transparent bg-gray-100 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
-                      onClick={() => setIsConfirmModalOpen(false)}
-                    >
-                      Hủy bỏ
-                    </button>
-                    <button
-                      type="button"
-                      className={`inline-flex justify-center rounded-md border border-transparent px-4 py-2 text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${confirmAction === "approve"
-                          ? "bg-green-600 hover:bg-green-700 focus-visible:ring-green-500"
-                          : "bg-red-600 hover:bg-red-700 focus-visible:ring-red-500"
-                        }`}
-                      onClick={confirmActionHandler}
-                    >
-                      {confirmAction === "approve" ? "Duyệt" : "Hủy"}
-                    </button>
-                  </div>
-                </Dialog.Panel>
-              </Transition.Child>
-            </div>
-          </div>
-        </Dialog>
-      </Transition>
-    </div>
-  );
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="bg-gray-100 text-gray-700 px-5 py-2.5 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                >
+                  Đóng
+                </button>
+              </div>
+            </Dialog.Panel>
+          </div>
+        </Dialog>
+      )}
+
+    </div>
+  );
 };
 
 export default AdminBillList;

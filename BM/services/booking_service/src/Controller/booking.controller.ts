@@ -7,7 +7,9 @@ import {
   Req,
   NotFoundException,
   UseGuards,
-  Query
+  Query,
+  HttpStatus,
+  HttpCode,
 } from '@nestjs/common';
 import { Controller, Get } from '@nestjs/common';
 import { BookingService } from '../Service/booking.service';
@@ -120,5 +122,38 @@ export class BookingController {
     const userId = req.user?.userId;
     const centerId = req.query?.centerId;
     return this.bookingService.checkExistsPendingBooking(userId, centerId);
+  }
+
+  @Get('/api/bookings')
+  @UseGuards(GatewayAuthGuard) // Đảm bảo chỉ Admin/Manager gọi được (tùy role guard của bạn)
+  async getAllBookings(@Query() query: any) {
+    return this.bookingService.getAllBookingsForAdmin(query);
+  }
+
+  @Post('/api/create-fixed-bookings')
+  @HttpCode(HttpStatus.CREATED)
+  // @UseGuards(JwtAuthGuard) // Bật lại nếu cần bảo mật
+  async createFixedBookings(@Body() payload: {
+    userId: string;
+    centerId: string;
+    bookings: {
+      date: string;
+      courtId: string;
+      timeslots: number[];
+    }[];
+  }) {
+    // Gọi xuống service đã viết lúc nãy
+    return this.bookingService.createFixedBookings(payload);
+  } 
+
+  @Post('/api/check-available-courts')
+  @HttpCode(HttpStatus.OK)
+  async checkAvailability(@Body() payload: {
+    centerId: string;
+    startDate: string;      // ISO String (Ngày bắt đầu)
+    daysOfWeek: number[];   // [1, 3, 5] (Thứ 2, 4, 6)
+    timeslots: string[];    // ["17:00", "18:00"] (Frontend gửi string)
+  }) {
+    return this.bookingService.checkAvailableCourtsForFixed(payload);
   }
 }

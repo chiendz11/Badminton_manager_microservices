@@ -57,6 +57,39 @@ router.get("/booking/pending/mapping",
     bookingProxy
 );
 
+router.get("/booking/bookings", 
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.SUPER_ADMIN,
+        GATEWAY_ROLES.CENTER_MANAGER
+    ]),
+    bookingProxy
+);
+
+// 3. POST /api/booking/check-availability
+// Chức năng: Kiểm tra sân trống cho lịch cố định (Logic phức tạp check 30 ngày)
+// Quyền: Center Manager, Admin (để đặt hộ khách)
+router.post("/booking/check-available-courts",
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.CENTER_MANAGER,
+        GATEWAY_ROLES.SUPER_ADMIN
+    ]),
+    bookingProxy
+);
+
+// 4. POST /api/booking/create-fixed
+// Chức năng: Tạo lịch đặt sân cố định (Batch insert)
+// Quyền: Center Manager, Admin
+router.post("/booking/create-fixed-bookings",
+    authenticate,
+    authorize([
+        GATEWAY_ROLES.CENTER_MANAGER,
+        GATEWAY_ROLES.SUPER_ADMIN
+    ]),
+    bookingProxy
+);
+
 router.patch("/booking/:bookingId", 
     authenticate,
     authorize([

@@ -8,6 +8,9 @@ export class User {
   @Prop({ type: String, required: true, unique: true })
   userId: string; 
 
+  @Prop({ type: String, required: true })
+  name: string;
+
   @Prop({ type: Number, required: true, default: 0 })
   points: number;
 
