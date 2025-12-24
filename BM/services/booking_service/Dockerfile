@@ -52,14 +52,14 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
 # Copy file .env từ thư mục gốc (nếu bạn dùng docker-compose env_file thì có thể bỏ dòng này, nhưng giữ lại cũng không sao)
-COPY .env ./.env
+
 
 # Copy file dist đã được build từ Giai đoạn Builder
 # Thư mục 'dist' chứa tất cả mã nguồn JavaScript đã compile
 COPY --from=builder /app/dist ./dist
 
 # Lệnh mặc định để chạy ứng dụng NestJS đã build
-CMD [ "node", "dist/main" ]
+CMD [ "node", "dist/main.js" ]
 
 # Mở cổng 8082 để khớp với docker-compose của bạn
 EXPOSE 8082

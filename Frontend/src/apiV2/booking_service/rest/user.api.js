@@ -13,3 +13,30 @@ export const getBookingHistory = async (userId, params) => {
   }
 };
 
+// API MỚI: Lấy thống kê tổng hợp (Aggregate)
+// URL: /api/user/{userId}/statistics
+export const getUserStatistics = async (params) => {
+  try {
+    const response = await axiosInstance.get(`/api/user/me/statistics`, {
+      params: params // Truyền period (week/month/year) hoặc các filter khác nếu cần
+    });
+    // Giả sử Backend trả về { success: true, data: { ... } } hoặc trực tiếp data
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching user statistics:", error);
+    throw error;
+  }
+};
+
+export const checkMyExistsPendingBooking = async (centerId) => {
+  try {
+    const response = await axiosInstance.get(`/api/user/me/exists-pending-booking`, {
+      params: { centerId }
+    });
+    return response.data;
+  } catch (error) {
+    console.error("API Error:", error);
+    throw error;
+  }
+};
+

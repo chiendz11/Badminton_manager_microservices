@@ -4,7 +4,10 @@ import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller.js";
 import { validate } from "../middlewares/validation.middleware.js";
 
-import { registerSchema, loginSchema, changePasswordSchema, adminResetPasswordSchema } from "../validations/auth.validations.js"; 
+import {
+    registerSchema, loginSchema, changePasswordSchema, adminResetPasswordSchema, forgotPasswordSchema, // 💡 Import mới
+    resetPasswordSchema   // 💡 Import mới
+} from "../validations/auth.validations.js";
 
 const authRouter = Router();
 
@@ -61,12 +64,30 @@ authRouter.put(
     '/users/:userId/password',
     // 💡 KHÔNG cần validate cũ (oldPassword là không cần thiết)
     // Nếu bạn muốn validate độ mạnh của newPassword:
-    validate(adminResetPasswordSchema), 
+    validate(adminResetPasswordSchema),
     AuthController.adminResetPassword
 );
 
+// 💡 [THÊM MỚI] 1. Yêu cầu lấy lại mật khẩu (Gửi Email)
+// Endpoint: POST /api/auth/forgot-password
+authRouter.post(
+    '/forgot-password',
+    validate(forgotPasswordSchema),
+    AuthController.forgotPassword
+);
+
+// 💡 [SỬA LẠI] 2. Đặt lại mật khẩu (Từ Link Email)
+// Endpoint: POST /api/auth/reset-password
+authRouter.post(
+  '/reset-password',
+  validate(resetPasswordSchema), // Sử dụng schema mới thay vì changePasswordSchema cũ
+  AuthController.resetPassword
+);
+
 authRouter.patch("/users/:userId/status", // Cập nhật trạng thái kích hoạt người dùng
-  AuthController.updateUserStatus); // Handler mới      
+    AuthController.updateUserStatus); // Handler mới      
+
+
 
 
 export default authRouter;

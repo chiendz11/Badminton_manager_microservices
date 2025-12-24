@@ -129,3 +129,34 @@ export const changePasswordSchema = Joi.object({
 export const adminResetPasswordSchema = Joi.object({
     newPassword: passwordRule
 });
+
+// 💡 [THÊM MỚI] Validate cho API đặt lại mật khẩu (Submit từ form)
+// 💡 [THÊM MỚI] Validate cho API yêu cầu quên mật khẩu (Gửi email)
+export const forgotPasswordSchema = Joi.object({
+    email: Joi.string()
+        .trim()
+        .email({ minDomainSegments: 2, tlds: { allow: ['com', 'net', 'vn'] } })
+        .required()
+        .messages({
+            'string.email': 'Email không hợp lệ.',
+            'any.required': 'Email là bắt buộc.'
+        })
+});
+
+// 💡 [THÊM MỚI] Validate cho API đặt lại mật khẩu (Submit từ form)
+export const resetPasswordSchema = Joi.object({
+    // FE gửi lên: token, userId, newPassword
+    token: Joi.string().required().messages({'any.required': 'Token không hợp lệ.'}),
+    userId: Joi.string().required().messages({'any.required': 'User ID không hợp lệ.'}),
+    
+    newPassword: passwordRule,
+    
+    // confirmPassword để validate logic, có thể strip đi sau đó
+    confirmPassword: Joi.string()
+        .valid(Joi.ref('newPassword'))
+        .required()
+        .messages({
+            'any.only': 'Mật khẩu xác nhận không khớp.',
+            'any.required': 'Mật khẩu xác nhận là bắt buộc.'
+        }),
+});

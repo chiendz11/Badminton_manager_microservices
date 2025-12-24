@@ -1,40 +1,42 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:8080";
+const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:8080";
+const CLIENT_ID = import.meta.env.VITE_CLIENT_ID;
 
-// 💡 BIẾN SINGLETON: Lưu trữ Promise đang chạy
+// 💡 TẠO INSTANCE RIÊNG: Chỉ dùng để refresh token
+// Việc này giúp tránh vòng lặp dependency với axiosConfig.js
+const refreshAxios = axios.create({
+    baseURL: API_GATEWAY_URL,
+    withCredentials: true, // Để gửi kèm cookie
+    headers: {
+        "Content-Type": "application/json",
+        // 👇 QUAN TRỌNG: Header này giúp BE biết đọc cookie nào
+        "x-client-id": CLIENT_ID, 
+    },
+});
+
+// Biến Singleton để chống spam request refresh
 let refreshPromise = null;
 
-/**
- * API Refresh Token với cơ chế Singleton (Chống gọi trùng lặp)
- */
 export const refreshTokenApi = () => {
-    // 1. Nếu đang có request chạy, trả về promise đó luôn (không gọi mới)
+    // 1. Nếu đang có request chạy, trả về promise đó luôn
     if (refreshPromise) {
         return refreshPromise;
     }
 
-    // 2. Nếu chưa có, tạo request mới và lưu vào biến refreshPromise
-    refreshPromise = axios.post(
-        `${API_URL}/api/auth/refresh-token`,
-        {},
-        {
-            withCredentials: true, // Gửi HttpOnly Cookie
-            headers: { 'Content-Type': 'application/json' }
-        }
-    )
-    .then(response => {
-        // Trả về data
-        return response.data;
-    })
-    .catch(error => {
-        console.error("[TokenAPI] Refresh thất bại:", error.response?.data || error.message);
-        throw error;
-    })
-    .finally(() => {
-        // 3. Dù thành công hay thất bại, reset biến về null để lần sau gọi lại được
-        refreshPromise = null;
-    });
+    // 2. Tạo request mới
+    refreshPromise = refreshAxios.post("/api/auth/refresh-token")
+        .then(response => {
+            return response.data; // Trả về { accessToken, user }
+        })
+        .catch(error => {
+            console.error("[TokenAPI] Refresh thất bại:", error);
+            throw error;
+        })
+        .finally(() => {
+            // 3. Reset biến về null sau khi xong
+            refreshPromise = null;
+        });
 
     return refreshPromise;
 };

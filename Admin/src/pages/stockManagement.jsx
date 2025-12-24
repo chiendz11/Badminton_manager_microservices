@@ -4,7 +4,7 @@ import {
   importStock,
   getStockHistory,
   getInventoryList,
-} from "../apis/inventoriesAPI.js";
+} from "../apiV2/inventory_service/rest/inventory.api.js";
 
 const centers = [
   { id: "67ca6e3cfc964efa218ab7d8", name: "Nhà thi đấu quận Thanh Xuân" },
@@ -33,7 +33,7 @@ export default function StockManagement() {
   }, [selectedCenter, selectedYear, selectedMonth]);
 
   const fetchInventory = async () => {
-    const res = await getInventoryList({ centerId: selectedCenter });
+    const res = await getInventoryList(selectedCenter );
     setInventoryList(res.data?.data || []);
   };
 

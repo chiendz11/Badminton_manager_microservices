@@ -15,16 +15,14 @@ import Competition from "./pages/Competition";
 import UserProfile from "./pages/UserProfile";
 import Service from "./pages/Service";
 import ResetPasswordPage from "./pages/ResetPassword";
-// (AuthProvider đã được bọc bên ngoài trong index.js)
 import WeatherDisplay from './components/WeatherDisplay';
 import Scroll from './components/Scroll';
 import PassCourtPage from './pages/PassCourts';
-
-// 💡 1. IMPORT "LÍNH GÁC CỔNG" CỦA BẠN
 import ProtectedLayout from './components/ProtectedLayout';
+import CompleteProfilePage from './pages/CompleteProfile';
 
-// 💡 2. IMPORT TRANG MÀ USER GOOGLE SẼ BỊ CHUYỂN HƯỚNG TỚI
-import CompleteProfilePage from './pages/CompleteProfile'; // (Chúng ta sẽ tạo file này)
+// 💡 IMPORT TRANG NOTIFICATIONS MỚI
+import Notifications from './pages/Notifications';
 
 function App() {
   return (
@@ -32,9 +30,7 @@ function App() {
       <Scroll />
       <Routes>
 
-        {/* ------------------------------------------ */}
-        {/* 1. CÁC ROUTE CÔNG KHAI (AI CŨNG XEM ĐƯỢC) */}
-        {/* ------------------------------------------ */}
+        {/* 1. CÁC ROUTE CÔNG KHAI */}
         <Route
           path="/"
           element={
@@ -53,22 +49,17 @@ function App() {
         <Route path="/news" element={<News />} />
         <Route path="/reset-password/:token/:userId" element={<ResetPasswordPage />} />
         <Route path="/pass-court" element={<PassCourtPage />} />
-
-        {/* 💡 Route này BẮT BUỘC phải "công khai", 
-            vì đây là nơi user (chưa hoàn thiện SĐT) bị redirect đến.
-          */}
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
 
-        {/* ------------------------------------------ */}
         {/* 2. CÁC ROUTE CÁ NHÂN (CẦN BẢO VỆ) */}
-        {/* ------------------------------------------ */}
         <Route element={<ProtectedLayout />}>
-          {/* Tất cả các Route bên trong <ProtectedLayout />
-                sẽ tự động được bảo vệ. */}
           <Route path="/profile" element={<UserProfile />} />
           <Route path="/booking" element={<BookingSchedule />} />
           <Route path="/payment" element={<PaymentPage />} />
-          {/* (Thêm bất kỳ route nào khác cần bảo vệ ở đây) */}
+          
+          {/* 💡 THÊM ROUTE NÀY VÀO ĐÂY */}
+          <Route path="/notifications" element={<Notifications />} />
+          
         </Route>
 
       </Routes>

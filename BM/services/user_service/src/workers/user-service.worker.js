@@ -2,7 +2,11 @@ import amqp from 'amqplib';
 import { UserExtraService } from '../services/user-extra.service.js';
 import { UserService } from '../services/user.service.js';
 import consola from 'consola';
-import { ROUTING_KEYS, EXCHANGE_NAME } from '../clients/rabbitmq.client.js';
+import { 
+    ROUTING_KEYS, 
+    EXCHANGE_NAME, 
+    BOOKING_EXCHANGE_NAME 
+} from '../clients/rabbitmq.client.js';
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@my_rabbitmq:5672';
 const QUEUE_NAME = 'q_user_updates';
@@ -12,67 +16,85 @@ export const startUserServiceWorker = async () => {
         const connection = await amqp.connect(RABBITMQ_URL);
         const channel = await connection.createChannel();
         
+        // 1. Setup Exchange USER
         await channel.assertExchange(EXCHANGE_NAME, 'topic', { durable: true });
         await channel.assertQueue(QUEUE_NAME, { durable: true });
+        await channel.bindQueue(QUEUE_NAME, EXCHANGE_NAME, 'user.#'); 
 
-        // 👇 2. Bind Routing Key CŨ (User Extra)
-        await channel.bindQueue(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEYS.USER_UPDATE_ANY);
+        // 2. Setup Exchange BOOKING
+        await channel.assertExchange(BOOKING_EXCHANGE_NAME, 'topic', { durable: true });
+        await channel.bindQueue(QUEUE_NAME, BOOKING_EXCHANGE_NAME, 'user.#');
 
         await channel.prefetch(1);
-
-        consola.info("🎧 User Service Worker is listening...");
+        consola.info(`🎧 User Worker listening on [${EXCHANGE_NAME}] & [${BOOKING_EXCHANGE_NAME}]`);
 
         channel.consume(QUEUE_NAME, async (msg) => {
             if (msg !== null) {
                 const messageContent = msg.content.toString();
-                const message = JSON.parse(messageContent).payload || JSON.parse(messageContent);
+                let message;
+                try {
+                    const parsed = JSON.parse(messageContent);
+                    message = parsed.payload || parsed; 
+                } catch (e) {
+                    consola.error("❌ JSON Parse error", e);
+                    channel.nack(msg, false, false);
+                    return;
+                }
                     
-                // 👇 Lấy Routing Key từ metadata của tin nhắn RabbitMQ
                 const routingKey = msg.fields.routingKey; 
-
-                consola.info(`Received message [${routingKey}]:`, message);
+                consola.info(`📨 Received [${routingKey}]`);
                 
                 try {
-                    // 👇 4. Dùng Switch-Case check Routing Key để xử lý đúng việc
                     switch (routingKey) {
-                        
-                        // 👉 CASE A: Update thông tin bổ sung (Logic cũ)
                         case ROUTING_KEYS.USER_EXTRA_UPDATE_EVENT:
                             await UserExtraService.updateUserExtra(message.userId, message.extraData);
-                            consola.success(`✅ Updated UserExtra for userId: ${message.userId}`);
-                            break;
-
-                        // 👉 CASE B: Update trạng thái (Logic MỚI)
-                        case ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT:
-                            // already handled in service so just ack it 
-                            consola.success(`✅ Processed Profile Update for userId: ${message.userId}`);
                             break;
 
                         case ROUTING_KEYS.USER_STATUS_UPDATE_EVENT:
-                            // Giả sử payload gửi sang là { userId: '...', isActive: true/false }
                             if (message.userId && message.isActive !== undefined) {
                                 await UserService.updateUserStatus(message.userId, message.isActive);
-                                consola.success(`✅ Updated Status for userId: ${message.userId} -> ${message.isActive}`);
-                            } else {
-                                consola.warn("⚠️ Invalid payload for status update");
+                                consola.success(`✅ Status updated: ${message.userId} -> ${message.isActive}`);
                             }
                             break;
 
+                        case ROUTING_KEYS.USER_POINTS_UPDATED:
+                            if (message.userId && message.pointsToAdd) {
+                                await UserService.updateUserPoints(message.userId, message.pointsToAdd);
+                                consola.success(`💰 Points updated: ${message.userId} (+${message.pointsToAdd})`);
+                            }
+                            break;
+
+                        // 👇 CASE: Xử lý Spam (Soft/Hard Ban)
+                        case ROUTING_KEYS.USER_SPAM_DETECTED:
+                            if (message.userId) {
+                                // Logic đếm số lần và ban nằm trong Service
+                                await UserService.handleSpamDetection(message.userId);
+                            }
+                            break;
+
+                        // 👇 CASE: Ân xá (Gỡ Spam)
+                        case ROUTING_KEYS.USER_SPAM_CLEARED:
+                            if (message.userId) {
+                                await UserService.unmarkUserSpam(message.userId);
+                            }
+                            break;
+
+                        case ROUTING_KEYS.USER_PROFILE_UPDATE_EVENT:
+                            break; // Ack only
+
                         default:
-                            consola.warn(`⚠️ Unhandled routing key: ${routingKey}`);
+                            consola.debug(`⚠️ Unhandled routing key: ${routingKey}`);
                     }
 
                     channel.ack(msg);
                 } catch (error) {
                     consola.error(`❌ Error processing ${routingKey}:`, error);
-                    // Nếu lỗi nghiêm trọng thì nack, còn lỗi logic data thì ack để bỏ qua
                     channel.nack(msg, false, false); 
                 }
-            } else {
-                consola.warn("Received null message");
             }
         });
     } catch (error) {
-        consola.error("UserService Worker failed to start:", error);
+        consola.error("❌ Worker failed to start:", error);
+        setTimeout(startUserServiceWorker, 5000);
     }
 };

@@ -37,12 +37,15 @@ services:
       - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
 
       # Default Assets
+      - REDIS_HOST=redis 
+      - REDIS_PORT=6379
       - RABBITMQ_URL=amqp://guest:guest@my_rabbitmq:5672 
     env_file:
       - .env
     restart: always
     depends_on:
       - user_service
+      - redis
     networks:
       - microservice_network
     logging: &default-logging
@@ -230,10 +233,16 @@ services:
       - CENTER_SERVICE_URL=${GATEWAY_CENTER_URL}
       - STORAGE_SERVICE_URL=${GATEWAY_STORAGE_URL}
       - SOCIAL_SERVICE_URL=${GATEWAY_SOCIAL_URL}
+      - INVENTORY_SERVICE_URL=${GATEWAY_INVENTORY_URL}
+      - TRANSACTION_SERVICE_URL=${GATEWAY_TRANSACTION_URL}
+      - NEWS_SERVICE_URL=${GATEWAY_NEWS_URL}
+      - RATING_SERVICE_URL=${GATEWAY_RATING_URL}
+
       
       # --- SHARED CONFIG ---
       - JWT_SECRET=${SHARED_JWT_SECRET}
       - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
+      - ADMIN_ORIGIN=${ADMIN_ORIGIN}
       - GOOGLE_OAUTH_REDIRECT_URL=${GOOGLE_OAUTH_REDIRECT_URL}
       - INTERNAL_AUTH_SECRET=${GATEWAY_INTERNAL_AUTH_SECRET}
     env_file:
@@ -245,6 +254,10 @@ services:
       - center_service
       - storage_service
       - booking_service
+      - inventory_service
+      - transaction_service
+      - news_service
+      - rating_service
     networks:
       - microservice_network
     logging: *default-logging
@@ -254,9 +267,9 @@ services:
     build: ./services/social_service
     container_name: social_service
     expose:
-      - "8086"
+      - "8090"
     ports:
-      - "8086:8086" # DELETE THIS IMMEDIATELY IN PRODUCTION, ONLY FOR LOCAL TESTING
+      - "8090:8090" # DELETE THIS IMMEDIATELY IN PRODUCTION, ONLY FOR LOCAL TESTING
     environment:
       - NODE_ENV=${NODE_ENV}
       - PORT=${SOCIAL_PORT}
@@ -326,6 +339,103 @@ services:
       - "6379"
     networks:
       - microservice_network
+
+  inventory_service:
+    build:
+      context: ./services/inventory_service
+      dockerfile: Dockerfile
+    container_name: inventory_service
+    expose:
+      - "8086"
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${INVENTORY_PORT}
+
+      # Code dùng MONGODB_URI
+      - MONGODB_URI=${INVENTORY_MONGO_URI}
+
+      # Internal auth
+      - INTERNAL_AUTH_SECRET=${INVENTORY_INTERNAL_AUTH_SECRET}
+    env_file:
+      - .env
+    restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  transaction_service:
+    build:
+      context: ./services/transaction_service
+      dockerfile: Dockerfile
+    container_name: transaction_service
+    expose:
+      - "8087"
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${TRANSACTION_PORT}
+
+      # Database
+      - MONGODB_URI=${TRANSACTION_MONGO_URI}
+
+      # Internal auth
+      - INTERNAL_AUTH_SECRET=${TRANSACTION_INTERNAL_AUTH_SECRET}
+
+      # Call inventory nội bộ
+      - INVENTORY_SERVICE_INTERNAL_URL=${TRANSACTION_INVENTORY_URL}
+    env_file:
+      - .env
+    depends_on:
+      - inventory_service
+    restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
+  
+  news_service:
+    build:
+      context: ./services/new_service
+      dockerfile: Dockerfile
+    container_name: new_service
+    expose:
+      - "8088"
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${NEWS_PORT}
+
+      # Database
+      - MONGODB_URI=${NEWS_MONGO_URI}
+
+      # Internal auth
+      - INTERNAL_AUTH_SECRET=${NEWS_INTERNAL_AUTH_SECRET}
+    env_file:
+      - .env
+    restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
+
+  rating_service:
+    build:
+      context: ./services/rating_service
+      dockerfile: Dockerfile
+    container_name: rating_service
+    expose:
+      - "8084"
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - PORT=${RATING_PORT}
+
+      # Database
+      - MONGODB_URI=${RATING_MONGO_URI}
+
+      # Internal auth
+      - INTERNAL_AUTH_SECRET=${RATING_INTERNAL_AUTH_SECRET}
+    env_file:
+      - .env
+    restart: always
+    networks:
+      - microservice_network
+    logging: *default-logging
 
   # ----------------------------------------------------
   # 6. NGINX (Cổng Public duy nhất + WAF)

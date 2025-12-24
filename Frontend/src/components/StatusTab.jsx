@@ -1,268 +1,246 @@
 import React from 'react';
 import PopularTimeChart from '../components/PopularTimeChart';
 
-// Helper function
-const calculateCenterPercentage = (centerName, user) => {
-  if (!user || !user?.favouriteCenter || user?.favouriteCenter.length === 0) return 0;
-  const totalBookingCount = user.favouriteCenter.reduce((total, center) => total + center.bookingCount, 0);
-  const center = user.favouriteCenter.find(center => center.centerName === centerName);
-  if (!center || totalBookingCount === 0) return 0;
-  return (center.bookingCount / totalBookingCount) * 100;
-};
-
 const StatsTab = ({
   user,
-  detailedStats,
+  statisticsData, // Dữ liệu tổng hợp từ 1 API (Overview, Monthly, Frequent, TimeStats)
   statsPeriod,
   setStatsPeriod,
-  chartData,
-  loadingChart,
   chartFilter,
   setChartFilter,
-  animateStats
+  animateStats,
+  loading
 }) => {
+  
+  // 1. Destructuring an toàn với Default Values
+  // Giúp component không bị crash khi dữ liệu chưa tải xong (null/undefined)
+  const { 
+    overview = { 
+        totalBookings: 0, 
+        completedBookings: 0, 
+        cancelledBookings: 0, 
+        completionRate: 0 
+    },
+    comparison = { 
+        totalChange: 0, 
+        completedChange: 0, 
+        cancelledChange: 0, 
+        pointsChange: 0 
+    },
+    monthlyStats = [],
+    frequentCenters = [],
+    timeStats = null 
+  } = statisticsData || {};
+
+  // 2. Helper Functions
+  
+  // Render mũi tên tăng/giảm
+  const renderTrend = (value) => {
+    const isNegative = value < 0;
+    const absValue = Math.round(Math.abs(value));
+    return (
+      <div className={`stats-trend ${isNegative ? "negative" : "positive"}`}>
+        {isNegative ? <i className="fas fa-arrow-down"></i> : <i className="fas fa-arrow-up"></i>}
+        <span>{absValue}%</span>
+      </div>
+    );
+  };
+
+  // Tính % hiển thị thanh bar cho danh sách sân
+  // Logic: Lấy số lượng booking của sân chia cho tổng số booking của Top 5 sân hiển thị
+  const calculateCenterPercent = (count) => {
+    if (!frequentCenters.length) return 0;
+    const totalDisplayed = frequentCenters.reduce((acc, curr) => acc + curr.bookingCount, 0);
+    return totalDisplayed === 0 ? 0 : (count / totalDisplayed) * 100;
+  };
+
   return (
     <div className="tab-content stats-content">
       <div className="section-title">
         <i className="fas fa-chart-line"></i>
         <h2>Thống kê hoạt động</h2>
       </div>
+
       <div className="stats-dashboard-enhanced">
+        
+        {/* --- A. OVERVIEW & FILTERS --- */}
         <div className="stats-overview">
           <div className="stats-header">
             <h3>Tổng quan hoạt động</h3>
             <div className="stats-period-selector">
-              <button
-                className={`period-btn ${statsPeriod === "week" ? "active" : ""}`}
+              <button 
+                className={`period-btn ${statsPeriod === "week" ? "active" : ""}`} 
                 onClick={() => setStatsPeriod("week")}
-              >
-                Tuần
-              </button>
-              <button
-                className={`period-btn ${statsPeriod === "month" ? "active" : ""}`}
+              >Tuần</button>
+              <button 
+                className={`period-btn ${statsPeriod === "month" ? "active" : ""}`} 
                 onClick={() => setStatsPeriod("month")}
-              >
-                Tháng
-              </button>
-              <button
-                className={`period-btn ${statsPeriod === "year" ? "active" : ""}`}
+              >Tháng</button>
+              <button 
+                className={`period-btn ${statsPeriod === "year" ? "active" : ""}`} 
                 onClick={() => setStatsPeriod("year")}
-              >
-                Năm
-              </button>
+              >Năm</button>
             </div>
           </div>
+
           <div className="stats-cards-container">
+            {/* CARD 1: TỔNG SỐ */}
             <div className={`stats-card-enhanced ${animateStats ? "animate" : ""}`}>
               <div className="stats-card-header">
                 <div className="stats-icon-enhanced booking">
                   <i className="fas fa-calendar-check"></i>
                 </div>
-                <div
-                  className={`stats-trend ${detailedStats && detailedStats.comparison.totalChange < 0 ? "negative" : "positive"}`}
-                >
-                  {detailedStats && detailedStats.comparison.totalChange < 0 ? (
-                    <i className="fas fa-arrow-down"></i>
-                  ) : (
-                    <i className="fas fa-arrow-up"></i>
-                  )}
-                  <span>{detailedStats ? Math.round(Math.abs(detailedStats.comparison.totalChange)) : 0}%</span>
-                </div>
+                {renderTrend(comparison.totalChange)}
               </div>
               <div className="stats-card-body">
                 <h4>Tổng số lần đặt sân</h4>
-                <div className="stats-value">{detailedStats ? detailedStats.current.total : 0}</div>
+                <div className="stats-value">
+                    {loading ? "..." : overview.totalBookings}
+                </div>
               </div>
               <div className="stats-card-footer">
                 <span>
-                  {detailedStats && detailedStats.comparison.totalChange >= 0 ? "Tăng" : "Giảm"}{" "}
-                  {detailedStats ? Math.abs(Math.round(detailedStats.comparison.totalChange)) : 0} so với{" "}
-                  {statsPeriod === "week" ? "tuần" : statsPeriod === "month" ? "tháng" : "năm"} trước
+                    {comparison.totalChange >= 0 ? "Tăng" : "Giảm"} {Math.abs(Math.round(comparison.totalChange))}% so với kỳ trước
                 </span>
               </div>
             </div>
+
+            {/* CARD 2: HOÀN THÀNH */}
             <div className={`stats-card-enhanced ${animateStats ? "animate" : ""}`} style={{ animationDelay: "0.1s" }}>
               <div className="stats-card-header">
                 <div className="stats-icon-enhanced completed">
                   <i className="fas fa-check-circle"></i>
                 </div>
-                <div
-                  className={`stats-trend ${detailedStats && detailedStats.comparison.completedChange < 0 ? "negative" : "positive"}`}
-                >
-                  {detailedStats && detailedStats.comparison.completedChange < 0 ? (
-                    <i className="fas fa-arrow-down"></i>
-                  ) : (
-                    <i className="fas fa-arrow-up"></i>
-                  )}
-                  <span>{detailedStats ? Math.round(Math.abs(detailedStats.comparison.completedChange)) : 0}%</span>
-                </div>
+                {renderTrend(comparison.completedChange)}
               </div>
               <div className="stats-card-body">
                 <h4>Hoàn thành</h4>
-                <div className="stats-value">{detailedStats ? detailedStats.current.completed : 0}</div>
+                <div className="stats-value">
+                    {loading ? "..." : overview.completedBookings}
+                </div>
               </div>
               <div className="stats-card-footer">
                 <div className="completion-rate">
                   <span>Tỷ lệ hoàn thành:</span>
                   <div className="rate-bar-container">
-                    <div
-                      className="rate-bar"
-                      style={{
-                        width: detailedStats && detailedStats.current.total > 0
-                          ? `${(detailedStats.current.completed / detailedStats.current.total) * 100}%`
-                          : "0%"
-                      }}
+                    <div 
+                        className="rate-bar" 
+                        style={{ width: `${overview.completionRate}%` }}
                     ></div>
                   </div>
-                  <span>
-                    {detailedStats && detailedStats.current.total > 0
-                      ? Math.round((detailedStats.current.completed / detailedStats.current.total) * 100)
-                      : 0}%
-                  </span>
+                  <span>{overview.completionRate}%</span>
                 </div>
               </div>
             </div>
+
+            {/* CARD 3: ĐÃ HỦY */}
             <div className={`stats-card-enhanced ${animateStats ? "animate" : ""}`} style={{ animationDelay: "0.2s" }}>
               <div className="stats-card-header">
                 <div className="stats-icon-enhanced cancelled">
                   <i className="fas fa-times-circle"></i>
                 </div>
-                <div
-                  className={`stats-trend ${detailedStats && detailedStats.comparison.cancelledChange < 0 ? "negative" : "positive"}`}
-                >
-                  {detailedStats && detailedStats.comparison.cancelledChange < 0 ? (
-                    <i className="fas fa-arrow-down"></i>
-                  ) : (
-                    <i className="fas fa-arrow-up"></i>
-                  )}
-                  <span>{detailedStats ? Math.round(Math.abs(detailedStats.comparison.cancelledChange)) : 0}%</span>
-                </div>
+                {renderTrend(comparison.cancelledChange)}
               </div>
               <div className="stats-card-body">
                 <h4>Đã hủy</h4>
-                <div className="stats-value">{detailedStats ? detailedStats.current.cancelled : 0}</div>
+                <div className="stats-value">
+                    {loading ? "..." : overview.cancelledBookings}
+                </div>
               </div>
               <div className="stats-card-footer">
                 <span>
-                  {detailedStats && detailedStats.comparison.cancelledChange >= 0 ? "Tăng" : "Giảm"}{" "}
-                  {detailedStats ? Math.abs(Math.round(detailedStats.comparison.cancelledChange)) : 0} so với{" "}
-                  {statsPeriod === "week" ? "tuần" : statsPeriod === "month" ? "tháng" : "năm"} trước
+                    {comparison.cancelledChange >= 0 ? "Tăng" : "Giảm"} {Math.abs(Math.round(comparison.cancelledChange))}% so với kỳ trước
                 </span>
               </div>
             </div>
+
+            {/* CARD 4: ĐIỂM THÀNH VIÊN */}
             <div className={`stats-card-enhanced ${animateStats ? "animate" : ""}`} style={{ animationDelay: "0.3s" }}>
               <div className="stats-card-header">
                 <div className="stats-icon-enhanced points">
                   <i className="fas fa-medal"></i>
                 </div>
-                <div
-                  className={`stats-trend ${detailedStats && detailedStats.comparison.pointsChange < 0 ? "negative" : "positive"}`}
-                >
-                  {detailedStats && detailedStats.comparison.pointsChange < 0 ? (
-                    <i className="fas fa-arrow-down"></i>
-                  ) : (
-                    <i className="fas fa-arrow-up"></i>
-                  )}
-                  <span>{detailedStats ? Math.round(Math.abs(detailedStats.comparison.pointsChange)) : 0}%</span>
-                </div>
+                {renderTrend(comparison.pointsChange)}
               </div>
               <div className="stats-card-body">
-                <h4>Điểm thành viên</h4>
-                <div className="stats-value">{detailedStats ? detailedStats.current.points : (user?.points || 0)}</div>
+                <h4>Điểm hiện tại</h4>
+                {/* Sử dụng user.points (tổng tích lũy) thay vì điểm trong kỳ để hiển thị số dư thực tế */}
+                <div className="stats-value">{user?.points || 0}</div>
               </div>
               <div className="stats-card-footer">
-                <span>
-                  {detailedStats && detailedStats.comparison.pointsChange >= 0 ? "Tăng" : "Giảm"}{" "}
-                  {detailedStats ? Math.abs(Math.round(detailedStats.comparison.pointsChange)) : 0} so với{" "}
-                  {statsPeriod === "week" ? "tuần" : statsPeriod === "month" ? "tháng" : "năm"} trước
-                </span>
+                <span>Tích lũy từ hoạt động đặt sân</span>
               </div>
             </div>
           </div>
         </div>
+
+        {/* --- B. BIỂU ĐỒ CỘT (MONTHLY CHART) --- */}
         <div className="stats-charts-enhanced">
           <div className="chart-container-enhanced">
             <div className="chart-header">
               <h3>Thống kê đặt sân theo tháng</h3>
               <div className="chart-actions">
-                <button
+                <button 
                   className={`chart-action-btn ${chartFilter === 'all' ? 'active' : ''}`}
                   onClick={() => setChartFilter("all")}
-                >
-                  Tất cả
-                </button>
-                <button
+                >Tất cả</button>
+                <button 
                   className={`chart-action-btn ${chartFilter === 'completed' ? 'active' : ''}`}
                   onClick={() => setChartFilter("completed")}
-                >
-                  Hoàn thành
-                </button>
-                <button
+                >Hoàn thành</button>
+                <button 
                   className={`chart-action-btn ${chartFilter === 'cancelled' ? 'active' : ''}`}
                   onClick={() => setChartFilter("cancelled")}
-                >
-                  Hủy
-                </button>
+                >Hủy</button>
               </div>
             </div>
-            {loadingChart ? (
-              <div>Loading chart...</div>
+
+            {loading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                <div className="badminton-spinner"></div>
+              </div>
             ) : (
               <div className="advanced-chart">
                 <div className="chart-labels">
                   <div className="chart-y-axis">
-                    <span>100%</span>
-                    <span>80%</span>
-                    <span>60%</span>
-                    <span>40%</span>
-                    <span>20%</span>
-                    <span>0%</span>
+                    <span>100%</span><span>80%</span><span>60%</span><span>40%</span><span>20%</span><span>0%</span>
                   </div>
                 </div>
                 <div className="chart-content">
                   <div className="chart-grid">
-                    {[...Array(6)].map((_, i) => (
-                      <div key={i} className="grid-line"></div>
-                    ))}
+                    {[...Array(6)].map((_, i) => <div key={i} className="grid-line"></div>)}
                   </div>
                   <div className="chart-bars">
-                    {chartData.map((data, index) => {
+                    {monthlyStats.length === 0 && <div className="no-data-text">Không có dữ liệu biểu đồ</div>}
+                    
+                    {monthlyStats.map((data, index) => {
                       const total = data.completed + data.cancelled;
+                      // Tính chiều cao % của thanh
                       const completedPercent = total > 0 ? (data.completed / total) * 100 : 0;
                       const cancelledPercent = total > 0 ? (data.cancelled / total) * 100 : 0;
+                      
                       return (
                         <div key={index} className="chart-bar-group">
                           <div className="stacked-bar">
-                            {chartFilter === "all" && (
-                              <>
-                                <div
-                                  className="bar-segment completed"
-                                  style={{ height: `${completedPercent}%` }}
-                                  data-value={data.completed}
+                            {/* Logic hiển thị theo Filter */}
+                            {(chartFilter === "all" || chartFilter === "completed") && (
+                                <div 
+                                    className="bar-segment completed" 
+                                    // Nếu chỉ hiện completed thì height phải tính lại base trên max value hoặc để 100% nếu muốn dạng stacked
+                                    // Ở đây giữ logic stacked:
+                                    style={{ height: `${chartFilter === 'completed' && total > 0 ? 100 : completedPercent}%` }} 
+                                    title={`Hoàn thành: ${data.completed}`}
                                 ></div>
-                                <div
-                                  className="bar-segment cancelled"
-                                  style={{ height: `${cancelledPercent}%` }}
-                                  data-value={data.cancelled}
+                            )}
+                            {(chartFilter === "all" || chartFilter === "cancelled") && (
+                                <div 
+                                    className="bar-segment cancelled" 
+                                    style={{ height: `${chartFilter === 'cancelled' && total > 0 ? 100 : cancelledPercent}%` }}
+                                    title={`Hủy: ${data.cancelled}`}
                                 ></div>
-                              </>
-                            )}
-                            {chartFilter === "completed" && (
-                              <div
-                                className="bar-segment completed"
-                                style={{ height: `${completedPercent}%` }}
-                                data-value={data.completed}
-                              ></div>
-                            )}
-                            {chartFilter === "cancelled" && (
-                              <div
-                                className="bar-segment cancelled"
-                                style={{ height: `${cancelledPercent}%` }}
-                                data-value={data.cancelled}
-                              ></div>
                             )}
                           </div>
-                          <span className="bar-label">{data.month}</span>
+                          <span className="bar-label">T{data.month}</span>
                         </div>
                       );
                     })}
@@ -270,41 +248,54 @@ const StatsTab = ({
                 </div>
               </div>
             )}
+            
             <div className="chart-legend">
               <div className="legend-item">
-                <div className="legend-color completed"></div>
-                <span>Hoàn thành</span>
+                <div className="legend-color completed"></div><span>Hoàn thành</span>
               </div>
               <div className="legend-item">
-                <div className="legend-color cancelled"></div>
-                <span>Đã hủy</span>
+                <div className="legend-color cancelled"></div><span>Đã hủy</span>
               </div>
             </div>
           </div>
+
+          {/* --- C. DETAILS GRID (Popular Time & Frequent Centers) --- */}
           <div className="stats-details-grid">
-            <PopularTimeChart />
+            
+            {/* 1. Component Giờ Phổ Biến (Nhận Data từ Props) */}
+            <PopularTimeChart data={timeStats} loading={loading} />
+            
+            {/* 2. Component Sân Thường Xuyên (Render từ frequentCenters) */}
             <div className="stats-detail-card">
               <div className="detail-card-header">
                 <h4><i className="fas fa-map-marker-alt"></i>Cơ sở đặt sân thường xuyên</h4>
               </div>
               <div className="detail-card-body">
                 <div className="location-distribution">
-                  {user && user?.favouriteCenter && user.favouriteCenter.map((center) => (
-                    <div className="location-item" key={center.centerName}>
-                      <div className="location-name">{center.centerName}</div>
-                      <div className="location-bar-container">
-                        <div className="location-bar-wrapper">
-                          <div
-                            className="location-bar"
-                            style={{ width: `${calculateCenterPercentage(center.centerName, user)}%` }}
-                          ></div>
+                  {loading && <p>Loading...</p>}
+                  {!loading && frequentCenters.length === 0 && (
+                      <p className="no-data">Chưa có dữ liệu đặt sân</p>
+                  )}
+
+                  {frequentCenters.map((center) => {
+                    const percent = calculateCenterPercent(center.bookingCount);
+                    return (
+                      <div className="location-item" key={center.centerId || center.centerName}>
+                        <div className="location-name">{center.centerName}</div>
+                        <div className="location-bar-container">
+                          <div className="location-bar-wrapper">
+                            <div 
+                                className="location-bar" 
+                                style={{ width: `${percent}%` }}
+                            ></div>
+                          </div>
+                          <span className="location-percentage">
+                            {center.bookingCount} lần
+                          </span>
                         </div>
-                        <span className="location-percentage">
-                          {calculateCenterPercentage(center.centerName, user).toFixed(0)}%
-                        </span>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>

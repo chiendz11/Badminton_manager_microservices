@@ -10,6 +10,7 @@ import userInternalRouter from "./src/routes/user.internal.route.js";
 import { initRabbitMQ } from "./src/clients/rabbitmq.client.js";
 import { startUserServiceWorker } from './src/workers/user-service.worker.js';
 import { startMeiliSearchWorker } from "./src/workers/meili-search.worker.js";
+import { initSpamCleanerCron } from "./src/workers/spam-cleaner.cron.js";
 
 
 const app = express();
@@ -18,6 +19,9 @@ const USER_PORT = PORT;
 // Kết nối đến cơ sở dữ liệu
 connectDB();
 syncModelIndexes();
+
+// Khởi động CronJob cho Spam Cleaner
+initSpamCleanerCron();
 
 // Global middleware
 app.use(helmet());

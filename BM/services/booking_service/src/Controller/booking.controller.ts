@@ -7,7 +7,9 @@ import {
   Req,
   NotFoundException,
   UseGuards,
-  Query
+  Query,
+  HttpStatus,
+  HttpCode,
 } from '@nestjs/common';
 import { Controller, Get } from '@nestjs/common';
 import { BookingService } from '../Service/booking.service';
@@ -66,26 +68,14 @@ export class BookingController {
     }
   }
 
-  @Get()
-  async findAll() {
-    return this.bookingService.findAllBookings();
-  }
-
-  @Get('api/:id/status')
-  async findOne(@Param('id') id: string) {
-    const booking = await this.bookingService.findBookingById(id);
-    if (!booking) throw new NotFoundException('Booking not found');
-    return booking.bookingStatus;
-  }
-
-  @Get('booking/:userId')
+  @Get('/booking/:userId')
   async findByUser(@Param('userId') userId: string) {
     return this.bookingService.findAllBookingsByUserId(userId);
   }
 
-  @Patch('booking/:id')
+  @Patch('/api/:bookingId')
   async updateStatus(
-    @Param('id') id: string,
+    @Param('bookingId') id: string,
     @Body('status') status: BookingStatus
   ) {
     const updated = await this.bookingService.updateBookingStatus(id, status);
@@ -96,8 +86,8 @@ export class BookingController {
     }
   }
 
-  @Delete('booking/:id')
-  async remove(@Param('id') id: string) {
+  @Delete('/api/:bookingId')
+  async remove(@Param('bookingId') id: string) {
     const deleted = await this.bookingService.deleteBooking(id);
     if (!deleted) throw new NotFoundException('Booking not found');
     return { message: 'Booking deleted successfully', id };
@@ -110,5 +100,60 @@ export class BookingController {
   ) {
     // Gọi sang Service với userId và object query đầy đủ
     return this.bookingService.getUserBookingHistory(userId, query);
+  }
+
+  @Get('/api/user/me/statistics')
+  @UseGuards(GatewayAuthGuard)
+  // @UseGuards(GatewayAuthGuard)
+  async getMyStats(@Req() req: any, @Query('period') period: string) {
+    // Nếu đi qua Gateway đã decode token, dùng userId từ req.user
+    // Nếu test trực tiếp, dùng query param
+    const userId = req.user?.userId;
+
+    // Validate period
+    const validPeriod = ['week', 'month', 'year'].includes(period) ? period : 'month';
+    
+    return await this.bookingService.getUserStatistics(userId, validPeriod as any);
+  }
+
+  @Get('/api/user/me/exists-pending-booking')
+  @UseGuards(GatewayAuthGuard)
+  async checkExistsPendingBooking(@Req() req: any) {
+    const userId = req.user?.userId;
+    const centerId = req.query?.centerId;
+    return this.bookingService.checkExistsPendingBooking(userId, centerId);
+  }
+
+  @Get('/api/bookings')
+  @UseGuards(GatewayAuthGuard) // Đảm bảo chỉ Admin/Manager gọi được (tùy role guard của bạn)
+  async getAllBookings(@Query() query: any) {
+    return this.bookingService.getAllBookingsForAdmin(query);
+  }
+
+  @Post('/api/create-fixed-bookings')
+  @HttpCode(HttpStatus.CREATED)
+  // @UseGuards(JwtAuthGuard) // Bật lại nếu cần bảo mật
+  async createFixedBookings(@Body() payload: {
+    userId: string;
+    centerId: string;
+    bookings: {
+      date: string;
+      courtId: string;
+      timeslots: number[];
+    }[];
+  }) {
+    // Gọi xuống service đã viết lúc nãy
+    return this.bookingService.createFixedBookings(payload);
+  } 
+
+  @Post('/api/check-available-courts')
+  @HttpCode(HttpStatus.OK)
+  async checkAvailability(@Body() payload: {
+    centerId: string;
+    startDate: string;      // ISO String (Ngày bắt đầu)
+    daysOfWeek: number[];   // [1, 3, 5] (Thứ 2, 4, 6)
+    timeslots: string[];    // ["17:00", "18:00"] (Frontend gửi string)
+  }) {
+    return this.bookingService.checkAvailableCourtsForFixed(payload);
   }
 }

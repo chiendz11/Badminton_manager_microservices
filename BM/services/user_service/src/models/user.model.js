@@ -80,7 +80,18 @@ const userSchema = new mongoose.Schema({
     points: {
         type: Number,
         default: 0
+    },// --- THÊM PHẦN NÀY ---
+    isSpamming: {
+        type: Boolean,
+        default: false,
+        index: true // Để Admin lọc ra những user đang bị khóa
     },
+    lastSpamTime: {
+        type: Date,
+        default: null
+    },
+    violationCount: { type: Number, default: 0 } // 👇 MỚI: Đếm số lần vi phạm
+    // ---------------------
 
 }, {
     timestamps: true,
