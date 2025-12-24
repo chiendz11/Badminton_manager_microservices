@@ -31,7 +31,7 @@ export const createCenterManager = async (data) => {
     }
 };
 
-export const adminResetPassword = async (userId, newPassword) => {
+export const ResetManagerPassword = async (userId, newPassword) => {
     try {
         // Gọi sang Admin API riêng biệt
         const response = await axiosInstance.put(`/api/users/${userId}/password`, { 

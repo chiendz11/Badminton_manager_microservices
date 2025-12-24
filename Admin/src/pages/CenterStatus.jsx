@@ -71,33 +71,44 @@ const CourtStatusPage = () => {
   const [isLoadingCourts, setIsLoadingCourts] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 1. KHỞI TẠO: LẤY LIST CENTER
+  // 1. KHỞI TẠO: LẤY LIST CENTER & CHECK QUYỀN
   useEffect(() => {
     const initData = async () => {
       if (authLoading || !admin) return; 
 
       try {
+        // Luôn lấy toàn bộ danh sách center về trước
+        const allCenters = await getAllCentersGQL();
+        
         if (admin.role === ROLES.SUPER_ADMIN) {
-          const data = await getAllCentersGQL();
-          setCentersList(data);
-          
-          if (data.length > 0 && !centerId) {
-            setCenterId(data[0].centerId);
+          // Nếu là Super Admin: Thấy hết, mặc định chọn cái đầu
+          setCentersList(allCenters);
+          if (allCenters.length > 0 && !centerId) {
+            setCenterId(allCenters[0].centerId);
           }
         } else if (admin.role === ROLES.CENTER_MANAGER) {
-          if (!admin.managedCenterId) {
-            setError("Tài khoản Manager chưa được gán trung tâm.");
-            return;
+          // 💡 LOGIC MỚI: Tìm center có centerManagerId trùng với ID của admin hiện tại
+          const myId = admin.userId || admin._id;
+          
+          const myCenter = allCenters.find(c => 
+             c.centerManagerId && c.centerManagerId.toString() === myId.toString()
+          );
+
+          if (myCenter) {
+            setCentersList([myCenter]); // Chỉ hiện center của họ trong dropdown
+            setCenterId(myCenter.centerId);
+          } else {
+            setError("Tài khoản Manager này chưa được phân công quản lý trung tâm nào.");
+            setCentersList([]);
           }
-          setCenterId(admin.managedCenterId);
         }
       } catch (err) {
         console.error("Error init data:", err);
-        setError("Không thể khởi tạo dữ liệu.");
+        setError("Không thể khởi tạo dữ liệu trung tâm.");
       }
     };
     initData();
-  }, [admin, authLoading]); 
+  }, [admin, authLoading]); // Bỏ centerId ra khỏi dependency để tránh loop
 
   // 2. LẤY CHI TIẾT SÂN
   useEffect(() => {
@@ -128,21 +139,16 @@ const CourtStatusPage = () => {
     fetchCenterDetail();
   }, [centerId]);
 
-  // 3. 💡 HÀM FETCH DỮ LIỆU BOOKING (Dùng chung cho Polling)
+  // 3. FETCH DỮ LIỆU BOOKING
   const fetchBookingStatus = useCallback(async () => {
     if (!centerId || courts.length === 0 || displayDates.length === 0) return;
 
-    // Chỉ hiện loading spinner nhỏ khi refresh thủ công, không hiện khi auto-polling
-    // setIsRefreshing(true); 
-
     const newBookingData = {};
     
-    // Dùng Promise.all để fetch song song cho nhanh nếu chọn nhiều ngày
     try {
       const promises = displayDates.map(async (date) => {
         const dateStr = getLocalDateString(date);
         try {
-          // Gọi API REST
           const mapping = await getPendingMapping(centerId, dateStr);
           
           const completeMapping = {};
@@ -179,33 +185,26 @@ const CourtStatusPage = () => {
   }, [centerId, courts, displayDates]);
 
 
-  // 4. 💡 CƠ CHẾ POLLING (Thay thế Socket)
+  // 4. POLLING
   useEffect(() => {
-    // Fetch lần đầu ngay khi đủ điều kiện
     if (courts.length > 0 && displayDates.length > 0) {
       fetchBookingStatus();
     }
 
-    // Thiết lập Interval 30 giây
     const intervalId = setInterval(() => {
       if (document.visibilityState === 'visible' && courts.length > 0) {
-         console.log("Auto-polling booking status...");
          fetchBookingStatus();
       }
     }, 30000); 
 
-    // Handle khi quay lại tab
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && courts.length > 0) {
-        console.log("Tab visible, fetching status...");
         fetchBookingStatus();
       }
     };
     
-    // Handle khi focus vào window
     const handleWindowFocus = () => {
         if (courts.length > 0) {
-          console.log("Window focused, fetching status...");
           fetchBookingStatus();
         }
     };
@@ -273,7 +272,7 @@ const CourtStatusPage = () => {
                 <BookingTable
                   courts={courts}
                   bookingData={bookingData[dateStr] || {}}
-                  toggleBookingStatus={() => {}} // Admin chỉ view, không book trực tiếp ở đây (hoặc update logic nếu cần)
+                  toggleBookingStatus={() => {}} 
                   times={times}
                   slotCount={slotCount}
                   currentUserId={null}
@@ -311,29 +310,28 @@ const CourtStatusPage = () => {
         {/* CONTROLS */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 px-4">
           
-          {/* Dropdown Trung Tâm (Chỉ SuperAdmin) */}
-          {admin.role === ROLES.SUPER_ADMIN && (
-            <div className="flex items-center">
-              <label className="mr-2 font-semibold text-white">Trung tâm:</label>
-              <div className="relative border border-gray-300 rounded-md bg-white">
-                <FaHome className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600" />
-                <select
-                  value={centerId}
-                  onChange={handleCenterChange}
-                  className="border-0 p-2 pl-8 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium text-gray-800 w-full"
-                  disabled={centersList.length === 0}
-                >
-                  {centersList.length === 0 ? (
-                    <option value="">Không có trung tâm</option>
-                  ) : (
-                    centersList.map((c) => (
-                      <option key={c.centerId} value={c.centerId}>{c.name}</option>
-                    ))
-                  )}
-                </select>
-              </div>
-            </div>
-          )}
+          {/* Dropdown Trung Tâm (Chỉ SuperAdmin hoặc nếu Manager muốn nhìn tên center của mình) */}
+          <div className="flex items-center">
+             <label className="mr-2 font-semibold text-white">Trung tâm:</label>
+             <div className="relative border border-gray-300 rounded-md bg-white">
+               <FaHome className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600" />
+               <select
+                 value={centerId}
+                 onChange={handleCenterChange}
+                 // Disable nếu không phải Super Admin
+                 disabled={admin.role !== ROLES.SUPER_ADMIN || centersList.length === 0}
+                 className={`border-0 p-2 pl-8 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 text-sm font-medium text-gray-800 w-full ${admin.role !== ROLES.SUPER_ADMIN ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+               >
+                 {centersList.length === 0 ? (
+                   <option value="">Không có dữ liệu</option>
+                 ) : (
+                   centersList.map((c) => (
+                     <option key={c.centerId} value={c.centerId}>{c.name}</option>
+                   ))
+                 )}
+               </select>
+             </div>
+           </div>
 
           {/* Chọn ngày */}
           <div className="flex flex-col">

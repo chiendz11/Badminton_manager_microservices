@@ -12,12 +12,12 @@ const app = express();
 // --- MIDDLEWARE ---
 
 // 💡 CẤU HÌNH CORS CHUẨN
-// Đảm bảo FRONTEND_ORIGIN và ADMIN_ORIGIN có giá trị thực tế (ví dụ: 'http://localhost:5173')
-// Nếu chưa có trong .env, hãy thêm vào.
+// Lưu ý: Đảm bảo file .env của bạn có chứa port 5174 
+// Ví dụ: FRONTEND_ORIGIN=http://localhost:5174 hoặc ADMIN_ORIGIN=http://localhost:5174
 const allowedOrigins = [
     FRONTEND_ORIGIN, 
     ADMIN_ORIGIN
-].filter(Boolean); // Lọc bỏ giá trị undefined/null
+].filter(Boolean); 
 
 app.use(cors({
     origin: (origin, callback) => {
@@ -25,17 +25,22 @@ app.use(cors({
         if (!origin) return callback(null, true);
         
         if (allowedOrigins.indexOf(origin) !== -1) {
-            // Nếu origin nằm trong whitelist -> Cho phép
             callback(null, true);
         } else {
-            // Nếu không -> Chặn
             console.warn(`[CORS] Blocked request from origin: ${origin}`);
             callback(new Error('Not allowed by CORS'));
         }
     },
-    credentials: true, // Quan trọng: Cho phép gửi cookie/header auth
+    credentials: true, 
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-User-ID', 'X-User-Role'],
+    // 🟢 SỬA LỖI TẠI ĐÂY: Thêm 'x-client-id' vào danh sách cho phép
+    allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'X-User-ID', 
+        'X-User-Role', 
+        'x-client-id' // 👈 BẮT BUỘC PHẢI CÓ
+    ],
 }));
 
 app.use(helmet({
@@ -46,7 +51,7 @@ app.use(helmet({
             scriptSrc: ["'self'", "'unsafe-inline'", "https://embeddable-sandbox.cdn.apollographql.com"],
             imgSrc: ["'self'", "data:", "https://embeddable-sandbox.cdn.apollographql.com"],
             frameSrc: ["'self'", "https://sandbox.embed.apollographql.com"],
-            connectSrc: ["'self'", ...allowedOrigins, "https://studio.apollographql.com", "http://localhost:5003"], 
+            connectSrc: ["'self'", ...allowedOrigins, "https://studio.apollographql.com"], 
         },
     },
 }));
@@ -61,16 +66,14 @@ app.get('/health', (req, res) => {
 
 app.use("/api", apiRouter);
 
-
-// 💡 HÀM WAIT: Đợi một khoảng thời gian
+// 💡 HÀM WAIT & START GATEWAY
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// 💡 HÀM KHỞI ĐỘNG CÓ RETRY
 const startGatewayWithRetry = async (retries = 5, delay = 3000) => {
     for (let i = 0; i < retries; i++) {
         try {
             console.log(`⏳ Starting Apollo Gateway (Attempt ${i + 1}/${retries})...`);
-            console.log(`Origins allowed:`, allowedOrigins); // Debug log để xem whitelist có đúng không
+            console.log(`Origins allowed:`, allowedOrigins); 
             
             const httpServer = await startApolloServer(app);
 

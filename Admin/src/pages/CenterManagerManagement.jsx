@@ -9,25 +9,34 @@ import {
     EnvelopeIcon,
     PlusIcon,
     PencilSquareIcon,
-    IdentificationIcon
+    IdentificationIcon,
+    EyeIcon,        // Icon Mắt mở
+    EyeSlashIcon,   // Icon Mắt đóng
+    ArrowLeftIcon   // 💡 Icon Quay lại
 } from "@heroicons/react/24/outline";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUserTie } from "@fortawesome/free-solid-svg-icons";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom"; // 💡 Hook điều hướng
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-// Import Component Thông báo Toàn màn hình Mới
 import FullscreenNotification from "../components/FullscreenNotification";
 
+// --- IMPORT API ---
 import {
     getAllUsers,
     updateUserProfile
 } from "../apiV2/user_service/rest/user.api";
 
-import { updateUserStatus, createCenterManager } from "../apiV2/auth_service/rest/user.api";
+import { 
+    updateUserStatus, 
+    createCenterManager, 
+    ResetManagerPassword
+} from "../apiV2/auth_service/rest/user.api"; 
+
 import { getAllCentersGQL } from "../apiV2/center_service/graphql/center.api";
 
+// --- HOOK DEBOUNCE ---
 function useDebounce(value, delay) {
     const [debouncedValue, setDebouncedValue] = useState(value);
     useEffect(() => {
@@ -38,17 +47,17 @@ function useDebounce(value, delay) {
 }
 
 function CenterManagerManagement() {
-    const navigate = useNavigate();
+    // 1. NAVIGATION
+    const navigate = useNavigate(); // 💡 Khởi tạo navigate
 
-    // 1. STATE
+    // 2. STATE DATA
     const [managers, setManagers] = useState([]);
     const [centers, setCenters] = useState([]);
     const [loading, setLoading] = useState(false);
     
-    // Loading states
+    // 3. STATE UI & FORM
     const [submitting, setSubmitting] = useState(false);
     const [actionLoading, setActionLoading] = useState(null);
-
     const [searchValue, setSearchValue] = useState("");
     const debouncedSearch = useDebounce(searchValue, 500);
     const [statusFilter, setStatusFilter] = useState("");
@@ -56,24 +65,28 @@ function CenterManagerManagement() {
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
 
+    // State ẩn/hiện mật khẩu
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
     const [formData, setFormData] = useState({
         username: "",
         name: "",
         email: "",
         password: "",
+        confirmPassword: "",
         phone_number: ""
     });
 
-    // 💡 State cho Fullscreen Notification
-    const [notification, setNotification] = useState(null); // { type: 'success'|'error', title: '', message: '' }
+    const [notification, setNotification] = useState(null); 
 
-    // 2. FETCH DATA
+    // 4. FETCH DATA
     const fetchData = async () => {
         if (managers.length === 0) setLoading(true);
         try {
             const params = {
                 page: 1,
-                limit: 100, // Lấy nhiều để demo grid, thực tế nên pagination
+                limit: 100,
                 role: 'CENTER_MANAGER',
                 search: debouncedSearch,
                 isActive: statusFilter
@@ -84,16 +97,9 @@ function CenterManagerManagement() {
                 getAllCentersGQL()
             ]);
 
-            if (usersRes.success) {
-                setManagers(usersRes.data);
-            }
-
-            if (Array.isArray(centersRes)) {
-                setCenters(centersRes);
-            }
-            else if (centersRes?.data?.centers) {
-                setCenters(centersRes.data.centers);
-            }
+            if (usersRes.success) setManagers(usersRes.data);
+            if (Array.isArray(centersRes)) setCenters(centersRes);
+            else if (centersRes?.data?.centers) setCenters(centersRes.data.centers);
 
         } catch (err) {
             console.error(err);
@@ -105,7 +111,7 @@ function CenterManagerManagement() {
 
     useEffect(() => { fetchData(); }, [debouncedSearch, statusFilter]);
 
-    // 3. LOGIC
+    // 5. LOGIC HANDLERS
     const getManagedCenterInfo = (managerId) => {
         if (!managerId) return { name: "Chưa phân công", assigned: false };
         const center = centers.find(c => c.centerManagerId?.trim() === managerId.trim());
@@ -115,18 +121,14 @@ function CenterManagerManagement() {
     const handleToggleStatus = async (e, user) => {
         e.stopPropagation();
         if (actionLoading === (user.userId || user._id)) return;
-
         const newStatus = !user.isActive;
         const actionText = newStatus ? "MỞ KHÓA" : "KHÓA";
-
+        
         if (!window.confirm(`Xác nhận ${actionText} tài khoản ${user.name}?`)) return;
 
         setActionLoading(user.userId || user._id);
-
         try {
             await updateUserStatus(user.userId || user._id, newStatus);
-            // Với thao tác nhỏ này, dùng toast hoặc notification nhỏ thì hợp lý hơn,
-            // nhưng nếu bạn muốn thống nhất toàn màn hình thì dùng setNotification ở đây luôn.
             toast.success(`Đã ${actionText.toLowerCase()} thành công!`); 
             await fetchData();
         } catch (error) {
@@ -138,16 +140,20 @@ function CenterManagerManagement() {
 
     const handleOpenModal = (user = null) => {
         setEditingUser(user);
+        setShowPassword(false);
+        setShowConfirmPassword(false);
+
         if (user) {
             setFormData({
                 username: user.username || "",
                 name: user.name,
                 email: user.email,
                 phone_number: user.phone_number || "",
-                password: ""
+                password: "",
+                confirmPassword: "" 
             });
         } else {
-            setFormData({ username: "", name: "", email: "", password: "", phone_number: "" });
+            setFormData({ username: "", name: "", email: "", password: "", confirmPassword: "", phone_number: "" });
         }
         setModalOpen(true);
     };
@@ -156,18 +162,17 @@ function CenterManagerManagement() {
         e.preventDefault();
         if (submitting) return;
 
-        // Validation Username
         if (!editingUser) {
             const usernameRegex = /^[a-z0-9_-]{3,20}$/;
             if (!usernameRegex.test(formData.username)) {
-                // Lỗi validation hiển thị fullscreen luôn cho đồng bộ
-                setNotification({
-                    type: 'error',
-                    title: 'Dữ liệu không hợp lệ',
-                    message: 'Username chỉ được chứa chữ thường, số, gạch dưới và gạch ngang (3-20 ký tự).'
-                });
+                setNotification({ type: 'error', title: 'Username không hợp lệ', message: 'Chỉ chứa chữ thường, số, gạch dưới/ngang (3-20 ký tự).' });
                 return;
             }
+        }
+
+        if (formData.password && formData.password !== formData.confirmPassword) {
+            setNotification({ type: 'error', title: 'Mật khẩu không khớp', message: 'Mật khẩu xác nhận không trùng khớp.' });
+            return;
         }
 
         setSubmitting(true);
@@ -175,55 +180,53 @@ function CenterManagerManagement() {
         try {
             if (editingUser) {
                 const userId = editingUser.userId || editingUser._id;
-                const payload = { ...formData };
-                if (!payload.password) delete payload.password;
-                if (payload.email) delete payload.email;
-                if (payload.username) delete payload.username;
-
-                await updateUserProfile(userId, payload);
                 
-                // 💡 THÔNG BÁO THÀNH CÔNG TOÀN MÀN HÌNH
+                // Update Profile
+                const profilePayload = { 
+                    name: formData.name, 
+                    phone_number: formData.phone_number 
+                };
+                await updateUserProfile(userId, profilePayload);
+
+                // Update Password
+                if (formData.password) {
+                    await ResetManagerPassword(userId, formData.password);
+                }
+                
                 setNotification({
                     type: 'success',
                     title: 'Cập nhật thành công!',
-                    message: `Thông tin quản lý "${formData.name}" đã được lưu lại.`
+                    message: formData.password 
+                        ? `Đã cập nhật thông tin và đổi mật khẩu cho "${formData.name}".`
+                        : `Đã cập nhật thông tin hồ sơ cho "${formData.name}".`
                 });
+
             } else {
-                await createCenterManager(formData);
+                const { confirmPassword, ...createPayload } = formData;
+                await createCenterManager(createPayload);
                 
-                // 💡 THÔNG BÁO THÀNH CÔNG TOÀN MÀN HÌNH
                 setNotification({
                     type: 'success',
                     title: 'Tạo mới thành công!',
-                    message: `Tài khoản quản lý "${formData.name}" (@${formData.username}) đã sẵn sàng.`
+                    message: `Tài khoản "${formData.name}" đã được tạo.`
                 });
             }
+            
             setModalOpen(false);
             fetchData();
         } catch (error) {
+            console.error(error);
             const msg = error.response?.data?.message || "Lỗi xử lý yêu cầu";
-            
-            // 💡 THÔNG BÁO LỖI TOÀN MÀN HÌNH
-            let displayMsg = msg;
-            if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("exist")) {
-                displayMsg = "Username hoặc Email này đã được sử dụng bởi người khác.";
-            }
-            
-            setNotification({
-                type: 'error',
-                title: 'Đã xảy ra lỗi',
-                message: displayMsg
-            });
+            setNotification({ type: 'error', title: 'Đã xảy ra lỗi', message: msg });
         } finally {
             setSubmitting(false);
         }
     };
 
-    // 4. RENDER UI
+    // 6. RENDER UI
     return (
         <div className="bg-gray-50 min-h-screen w-full font-sans relative">
             
-            {/* 💡 RENDER NOTIFICATION NẾU CÓ */}
             {notification && (
                 <FullscreenNotification 
                     type={notification.type}
@@ -234,8 +237,19 @@ function CenterManagerManagement() {
             )}
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                
+                {/* 💡 BUTTON QUAY LẠI DASHBOARD */}
+                <div className="mb-6">
+                    <button 
+                        onClick={() => navigate('/dashboard')}
+                        className="flex items-center gap-2 text-gray-500 hover:text-blue-600 transition-colors font-medium px-3 py-2 rounded-lg hover:bg-white hover:shadow-sm"
+                    >
+                        <ArrowLeftIcon className="w-5 h-5" />
+                        Quay lại Dashboard
+                    </button>
+                </div>
 
-                {/* HEADER */}
+                {/* HEADER & FILTER */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
@@ -245,7 +259,6 @@ function CenterManagerManagement() {
                         <p className="text-gray-500 text-sm mt-1">Quản lý đội ngũ vận hành các trung tâm</p>
                     </div>
 
-                    {/* Filters */}
                     <div className="flex flex-wrap gap-3 w-full md:w-auto">
                         <div className="relative flex-1 md:w-64">
                             <MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-2.5" />
@@ -281,7 +294,7 @@ function CenterManagerManagement() {
                 {(!loading || managers.length > 0) && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
 
-                        {/* CARD ADD NEW */}
+                        {/* ADD NEW CARD */}
                         <div
                             onClick={() => handleOpenModal(null)}
                             className="border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 group min-h-[220px]"
@@ -293,7 +306,7 @@ function CenterManagerManagement() {
                             <p className="text-xs text-gray-400 mt-1 text-center">Tạo tài khoản và cấp quyền</p>
                         </div>
 
-                        {/* MANAGER CARDS */}
+                        {/* LIST CARDS */}
                         {managers.map((manager) => {
                             const centerInfo = getManagedCenterInfo(manager.userId || manager._id);
                             const isBanned = !manager.isActive;
@@ -305,10 +318,8 @@ function CenterManagerManagement() {
                                     onClick={() => handleOpenModal(manager)}
                                     className={`relative bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between ${isBanned ? 'bg-gray-50' : ''}`}
                                 >
-                                    {/* Header */}
                                     <div className="flex justify-between items-start mb-4">
                                         <div className="flex items-center gap-3">
-                                            {/* Sửa kích thước ảnh ở đây */}
                                             <img
                                                 src={manager.avatar_url || 'https://res.cloudinary.com/dm4uxmmtg/image/upload/v1762859721/badminton_app/avatars/default_user_avatar.png'}
                                                 alt={manager.name}
@@ -331,7 +342,6 @@ function CenterManagerManagement() {
                                                 ? 'bg-red-50 text-red-500 hover:bg-red-100'
                                                 : 'bg-gray-50 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
                                             } ${isProcessing ? 'cursor-not-allowed opacity-70' : ''}`}
-                                            title={isBanned ? "Mở khóa tài khoản" : "Khóa tài khoản"}
                                         >
                                             {isProcessing ? (
                                                 <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
@@ -341,15 +351,14 @@ function CenterManagerManagement() {
                                         </button>
                                     </div>
 
-                                    {/* Body */}
                                     <div className="space-y-2 text-sm text-gray-600 mb-4">
                                         <div className="flex items-center gap-2 overflow-hidden font-mono bg-gray-50 px-2 py-1 rounded border border-gray-100">
                                             <IdentificationIcon className="w-4 h-4 text-blue-500 shrink-0" />
-                                            <span className="truncate text-blue-700 font-medium" title={manager.username}>@{manager.username}</span>
+                                            <span className="truncate text-blue-700 font-medium">@{manager.username}</span>
                                         </div>
                                         <div className="flex items-center gap-2 overflow-hidden">
                                             <EnvelopeIcon className="w-4 h-4 text-gray-400 shrink-0" />
-                                            <span className="truncate" title={manager.email}>{manager.email}</span>
+                                            <span className="truncate">{manager.email}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <PhoneIcon className="w-4 h-4 text-gray-400 shrink-0" />
@@ -357,13 +366,11 @@ function CenterManagerManagement() {
                                         </div>
                                     </div>
 
-                                    {/* Footer */}
                                     <div className={`mt-auto pt-3 border-t border-gray-100 flex items-center gap-2 text-xs ${centerInfo.assigned ? 'text-blue-600' : 'text-gray-400'}`}>
                                         <BuildingOfficeIcon className="w-4 h-4" />
                                         <span className="font-medium truncate">{centerInfo.name}</span>
                                     </div>
-
-                                    {/* Hover Hint */}
+                                    
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 rounded-2xl transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
                                         <span className="bg-white text-gray-800 px-3 py-1 rounded-full text-xs font-bold shadow-sm flex items-center gap-1">
                                             <PencilSquareIcon className="w-3 h-3" /> Chỉnh sửa
@@ -385,56 +392,96 @@ function CenterManagerManagement() {
                                     {editingUser ? "Cập nhật thông tin" : "Thêm Manager Mới"}
                                 </h2>
                                 {editingUser && !editingUser.isActive && (
-                                    <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-bold">Tài khoản đang bị khóa</span>
+                                    <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-bold">Đã khóa</span>
                                 )}
                             </div>
 
                             <form onSubmit={handleSubmit} className="p-6 space-y-5">
                                 <div className="space-y-4">
-
-                                    {/* FIELD USERNAME */}
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">Username <span className="text-red-500">*</span></label>
                                         <input
-                                            type="text"
-                                            required
-                                            disabled={!!editingUser}
-                                            className={`w-full px-4 py-2 border border-gray-300 rounded-lg outline-none transition-all ${editingUser ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
+                                            type="text" required disabled={!!editingUser}
+                                            className={`w-full px-4 py-2 border border-gray-300 rounded-lg outline-none transition-all ${editingUser ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500'}`}
                                             value={formData.username}
                                             onChange={e => setFormData({ ...formData, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
                                             placeholder="nguyen_van_a"
                                         />
-                                        {!editingUser && <p className="text-xs text-gray-400 mt-1">Định danh duy nhất, dùng để đăng nhập. Không thể đổi sau này.</p>}
+                                        {!editingUser && <p className="text-xs text-gray-400 mt-1">Định danh đăng nhập, không thể đổi sau này.</p>}
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1">Tên hiển thị <span className="text-red-500">*</span></label>
-                                        <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                                            value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Ví dụ: Nguyễn Văn A" />
+                                        <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                            value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Nguyễn Văn A" />
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Email đăng nhập <span className="text-red-500">*</span></label>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
                                         <input type="email" required disabled={!!editingUser}
-                                            className={`w-full px-4 py-2 border border-gray-300 rounded-lg outline-none ${editingUser ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500 focus:border-blue-500'}`}
-                                            value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="manager@example.com" />
+                                            className={`w-full px-4 py-2 border border-gray-300 rounded-lg outline-none ${editingUser ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:ring-2 focus:ring-blue-500'}`}
+                                            value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="example@mail.com" />
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-1">Số điện thoại</label>
-                                            <input type="text" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                                value={formData.phone_number} onChange={e => setFormData({ ...formData, phone_number: e.target.value })} placeholder="09xxxx" />
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1">Số điện thoại</label>
+                                        <input type="text" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                            value={formData.phone_number} onChange={e => setFormData({ ...formData, phone_number: e.target.value })} placeholder="09xxxx" />
+                                    </div>
+                                    
+                                    {/* Password Fields with Toggle */}
+                                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                                        <div className="col-span-2">
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Bảo mật</p>
                                         </div>
-                                        <div>
+
+                                        <div className="relative">
                                             <label className="block text-sm font-semibold text-gray-700 mb-1">
                                                 {editingUser ? "Mật khẩu mới" : "Mật khẩu *"}
                                             </label>
-                                            <input type="password"
-                                                required={!editingUser}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                                value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })}
-                                                placeholder={editingUser ? "Để trống nếu không đổi" : "••••••••"} />
+                                            <div className="relative">
+                                                <input 
+                                                    type={showPassword ? "text" : "password"}
+                                                    required={!editingUser}
+                                                    className="w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    value={formData.password} 
+                                                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                                                    placeholder={editingUser ? "Để trống nếu không đổi" : "••••••••"} 
+                                                />
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                                                >
+                                                    {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="relative">
+                                            <label className="block text-sm font-semibold text-gray-700 mb-1">
+                                                Xác nhận lại
+                                                {formData.password && <span className="text-red-500"> *</span>}
+                                            </label>
+                                            <div className="relative">
+                                                <input 
+                                                    type={showConfirmPassword ? "text" : "password"}
+                                                    required={!!formData.password}
+                                                    disabled={!formData.password}
+                                                    className={`w-full pl-4 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${!formData.password ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                                                    value={formData.confirmPassword} 
+                                                    onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })}
+                                                    placeholder="Nhập lại mật khẩu" 
+                                                />
+                                                <button 
+                                                    type="button"
+                                                    disabled={!formData.password}
+                                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none disabled:opacity-50"
+                                                >
+                                                    {showConfirmPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -455,7 +502,6 @@ function CenterManagerManagement() {
                         </div>
                     </div>
                 )}
-
             </div>
         </div>
     );
