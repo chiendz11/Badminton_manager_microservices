@@ -46,33 +46,47 @@ const FriendsTab = ({ currentUser }) => {
   useEffect(() => {
     if (!socket || !selectedConv) return;
 
-    // A. Join the specific room for this conversation
-    socket.emit('joinConversation', selectedConv._id);
+    const roomId = selectedConv._id;
 
-    // B. Load initial history via API (what we did before)
+    // A. Define logic to Join Room (Reusable for reconnection)
+    const joinRoom = () => {
+      console.log(`(Re)Joining room: ${roomId}`); 
+      socket.emit('joinConversation', roomId);
+    };
+
+    // B. Initial Join
+    joinRoom();
+
+    // C. Load initial history via API
     const fetchHistory = async () => {
         try {
             const friend = getFriendInfo(selectedConv);
-            const data = await getConversationById(friend.userId);
+            // Ensure you are fetching by CONVERSATION ID or USER ID correctly depending on your API
+            const data = await getConversationById(friend.userId); 
             if (data?.messages) setMessages(data.messages);
         } catch (e) { console.error(e); }
     };
     fetchHistory();
 
-    // C. Listen for NEW messages coming from backend
-    socket.on('newMessage', (newMsg) => {
-        // Only append if the message belongs to this conversation
-        if (newMsg.conversationId === selectedConv._id) {
+    // D. Listen for NEW messages
+    const handleNewMessage = (newMsg) => {
+        // Double check the message belongs to this room
+        if (newMsg.conversationId === roomId) {
             setMessages((prev) => [...prev, newMsg]);
         }
-    });
-
-    // Cleanup: Leave room and remove listener when switching chats
-    return () => {
-        socket.emit('leaveConversation', selectedConv._id);
-        socket.off('newMessage');
     };
-  }, [selectedConv, socket]); // Re-run when selectedConv changes
+    socket.on('newMessage', handleNewMessage);
+
+    // E. CRITICAL FIX: Re-join if connection drops and restores
+    socket.on('connect', joinRoom);
+
+    // Cleanup
+    return () => {
+        socket.emit('leaveConversation', roomId);
+        socket.off('newMessage', handleNewMessage);
+        socket.off('connect', joinRoom); // Stop listening to connect on cleanup
+    };
+  }, [selectedConv, socket]);
 
   // --- 4. Send Message via Socket ---
   const handleSend = () => {
