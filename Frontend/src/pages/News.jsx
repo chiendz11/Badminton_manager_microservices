@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import "../styles/news.css";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { getNews } from "../apis/news"; // Import API từ file news.js
+import { getNews } from "../apiV2/news_service/rest/news.api.js";
 
 const News = () => {
   const [activeCategory, setActiveCategory] = useState("all");
