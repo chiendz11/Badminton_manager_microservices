@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useMemo } from "react";
-import { getSellHistories, createSellHistory } from "../apis/sellhistoryAPI.js";
-import { getInventoryList } from "../apis/inventoriesAPI.js";
+import { getSellHistories, createSellHistory } from "../apiV2/transaction_service/rest/transaction.api.js";
+import { getInventoryList } from "../apiV2/inventory_service/rest/inventory.api.js";
 import { getAllCentersGQL } from "../apiV2/center_service/graphql/center.api";
 import { AuthContext } from "../contexts/AuthContext";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -9,8 +9,7 @@ import { ROLES } from "../constants/roles"; // Import ROLES từ constant
 export default function Shop() {
   const { admin } = useContext(AuthContext); // Lấy thông tin user hiện tại
   const [sellHistories, setSellHistories] = useState([]);
-  const [allCenters, setAllCenters] = useState([]); // Lưu TẤT CẢ center lấy từ API
-  const [selectedCenter, setSelectedCenter] = useState("");
+  const [selectedCenter, setSelectedCenter] = useState(centers[0].id);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -86,7 +85,8 @@ export default function Shop() {
       setSellHistories(res.data.data || []);
     } catch (err) {
       console.error(err);
-      alert("Lỗi khi lấy danh sách hóa đơn.");
+      // Removed alert to prevent spamming if API fails on load
+      console.error("Lỗi khi lấy danh sách hóa đơn.");
     }
   };
 
@@ -104,25 +104,27 @@ export default function Shop() {
     setTotalAmount(calculateTotal());
   }, [invoiceItems, inventoryList]);
 
-  // Open modal logic
+  // Open modal and fetch inventory
   const handleOpenModal = async () => {
-    if (!selectedCenter) {
-        alert("Vui lòng chọn trung tâm trước khi tạo hóa đơn.");
-        return;
-    }
     try {
       const res = await getInventoryList({ centerId: selectedCenter });
       setInventoryList(res.data.data || []);
       setInvoiceItems({});
       setShowModal(true);
     } catch (err) {
-      console.error(err);
-      alert("Lỗi khi lấy danh sách kho.");
+      console.error("Inventory fetch error:", err);
+      alert("Lỗi khi lấy danh sách kho: " + (err.message || "Unknown error"));
     }
   };
 
   const handleQuantityChange = (id, value) => {
-    const quantity = Math.max(0, Math.min(Number(value), inventoryList.find(item => item._id === id)?.quantity || 0));
+    const item = inventoryList.find(i => i._id === id);
+    if (!item) return;
+    
+    // Ensure value is handled as a number
+    const numValue = Number(value);
+    const quantity = Math.max(0, Math.min(numValue, item.quantity || 0));
+    
     setInvoiceItems(prev => ({ ...prev, [id]: quantity }));
   };
 
@@ -154,6 +156,10 @@ export default function Shop() {
       alert("Tạo hóa đơn thành công!");
       setShowModal(false);
       fetchHistories();
+      // Reset form
+      setCustomerName("");
+      setCustomerContact("");
+      setInvoiceItems({});
     } catch (err) {
       console.error(err);
       alert("Lỗi khi tạo hóa đơn.");
@@ -254,37 +260,29 @@ export default function Shop() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredHistories.length > 0 ? (
-                  filteredHistories.map(h => (
-                    <tr key={h._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{h.invoiceNumber}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getCenterName(h.centerId)}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(h.createdAt).toLocaleDateString('vi-VN', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                        {h.totalAmount.toLocaleString('vi-VN')}₫
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                          {h.paymentMethod}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-              ) : (
-                  <tr>
-                      <td colSpan="5" className="px-6 py-4 text-center text-gray-500">
-                          {myCenters.length === 0 ? "Bạn chưa được phân công quản lý trung tâm nào." : "Không tìm thấy hóa đơn nào."}
-                      </td>
-                  </tr>
-              )}
+              {filteredHistories.map(h => (
+                <tr key={h._id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{h.invoiceNumber}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getCenterName(h.centerId)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(h.createdAt).toLocaleDateString('vi-VN', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                    {h.totalAmount.toLocaleString('vi-VN')}₫
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                      {h.paymentMethod}
+                    </span>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
