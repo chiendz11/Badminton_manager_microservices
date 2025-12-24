@@ -43,7 +43,7 @@ router.get("/transactions/sell", transactionProxy);
 router.post(
     "/transactions/sell",
     authenticate,
-    authorize(GATEWAY_ROLES.USER),
+    authorize([GATEWAY_ROLES.ADMIN, GATEWAY_ROLES.SUPER_ADMIN]),
     transactionProxy
 );
 

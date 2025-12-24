@@ -8,4 +8,5 @@ router.get("/center/:centerId", internalAuth, InventoryController.getInventories
 // Route nội bộ để service khác gọi update số lượng
 router.put("/update-stock", internalAuth, InventoryController.updateStockInternal);
 router.post("/create-inventory", internalAuth, InventoryController.createInventoryInternal)
+router.put("/sell-stock", internalAuth, InventoryController.createSellStock)
 export default router;

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import {
   importStock,
-  importNewStock, // <--- Import hàm mới
+  importNewStock,
   getStockHistory,
   getInventoryList,
 } from "../apiV2/inventory_service/rest/inventory.api.js";
+import { useNavigate } from "react-router-dom"; // Import useNavigate
 
 const centers = [
   { id: "67ca6e3cfc964efa218ab7d8", name: "Nhà thi đấu quận Thanh Xuân" },
@@ -16,6 +17,8 @@ const centers = [
 const IMPORT_UNITS = ["Thùng", "Két", "Hộp", "Lố", "Bao", "Gói"];
 
 export default function StockManagement() {
+  const navigate = useNavigate(); // Khởi tạo điều hướng
+
   // --- STATE BỘ LỌC ---
   const [selectedCenter, setSelectedCenter] = useState(centers[0].id);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -26,24 +29,22 @@ export default function StockManagement() {
   const [importHistory, setImportHistory] = useState([]);
 
   // --- STATE FORM ---
-  const [activeTab, setActiveTab] = useState("EXISTING"); // "EXISTING" (Hàng cũ) | "NEW" (Hàng mới)
+  const [activeTab, setActiveTab] = useState("EXISTING"); 
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   
-  // Form nhập kho (Dùng chung cho cả 2 tab)
   const [stockForm, setStockForm] = useState({
     supplier: "",
-    quantityImport: 1,      // Số lượng nhập (VD: 10 Thùng)
-    unitImport: "Thùng",    // Đơn vị nhập
-    unitImportQuantity: 24, // Quy đổi: 1 Thùng = 24 cái lẻ
-    importPrice: 0,         // Giá nhập 1 Thùng
+    quantityImport: 1,
+    unitImport: "Thùng",
+    unitImportQuantity: 24,
+    importPrice: 0,
   });
 
-  // Form thông tin sản phẩm mới (Chỉ dùng cho Tab NEW)
   const [newProductForm, setNewProductForm] = useState({
     name: "",
     category: "Đồ uống",
-    unitSell: "Cái",        // Đơn vị bán lẻ (Chai/Lon)
-    price: 0,               // Giá bán lẻ dự kiến
+    unitSell: "Cái",
+    price: 0,
   });
 
   // --- 1. FETCH DATA ---
@@ -53,7 +54,6 @@ export default function StockManagement() {
 
   const fetchData = async () => {
     try {
-      // Gọi song song 2 API lấy kho và lịch sử
       const [invRes, histRes] = await Promise.all([
         getInventoryList(selectedCenter),
         getStockHistory({
@@ -82,17 +82,12 @@ export default function StockManagement() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // TÍNH TOÁN DỮ LIỆU PHÁI SINH (Backend yêu cầu)
     const qtyImport = Number(stockForm.quantityImport);
     const unitQty = Number(stockForm.unitImportQuantity);
     const impPrice = Number(stockForm.importPrice);
-
-    // Tính tổng số lượng lẻ cộng vào kho
     const totalAdded = qtyImport * unitQty; 
-    // Tính tổng chi phí nhập
     const totalCost = qtyImport * impPrice; 
 
-    // Payload phần thông tin nhập kho (dùng chung)
     const stockInfoPayload = {
       centerId: selectedCenter,
       supplier: stockForm.supplier,
@@ -100,45 +95,33 @@ export default function StockManagement() {
       unitImport: stockForm.unitImport,
       unitImportQuantity: unitQty,
       importPrice: impPrice,
-      totalAdded: totalAdded, // Quan trọng: BE dùng để cộng kho
-      totalCost: totalCost,   // Quan trọng: Lưu lịch sử giá trị
+      totalAdded: totalAdded,
+      totalCost: totalCost,
     };
 
     try {
       if (activeTab === "EXISTING") {
-        // --- TRƯỜNG HỢP 1: HÀNG CŨ ---
         if (!selectedInventoryId) return alert("Vui lòng chọn mặt hàng!");
-
         await importStock({
           ...stockInfoPayload,
-          inventoryId: selectedInventoryId, // Chỉ cần ID hàng cũ
+          inventoryId: selectedInventoryId,
         });
-
       } else {
-        // --- TRƯỜNG HỢP 2: HÀNG MỚI ---
         if (!newProductForm.name) return alert("Vui lòng nhập tên hàng mới!");
-
         const fullPayload = {
           productInfo: {
-            name: newProductForm.name,
-            category: newProductForm.category,
-            unitSell: newProductForm.unitSell,
+            ...newProductForm,
             price: Number(newProductForm.price),
           },
-          stockInfo: stockInfoPayload, // Không gửi inventoryId vì chưa có
+          stockInfo: stockInfoPayload,
         };
-
         await importNewStock(fullPayload);
       }
 
       alert("Nhập kho thành công!");
-      
-      // Reset Form
       setStockForm({ ...stockForm, quantityImport: 1, importPrice: 0, supplier: "" });
       setNewProductForm({ name: "", category: "Đồ uống", unitSell: "Cái", price: 0 });
       setSelectedInventoryId("");
-      
-      // Load lại dữ liệu
       fetchData();
 
     } catch (err) {
@@ -148,12 +131,20 @@ export default function StockManagement() {
     }
   };
 
-  // Preview tính toán
   const previewTotal = Number(stockForm.quantityImport) * Number(stockForm.unitImportQuantity);
   const previewCost = Number(stockForm.quantityImport) * Number(stockForm.importPrice);
 
   return (
     <div className="p-6 space-y-8 max-w-7xl mx-auto bg-gray-50 min-h-screen">
+      
+      {/* NÚT QUAY LẠI DASHBOARD */}
+      <button 
+        onClick={() => navigate("/dashboard")} 
+        className="mb-2 flex items-center gap-2 text-slate-400 hover:text-blue-600 transition-colors font-bold text-xs uppercase tracking-widest"
+      >
+        <span className="text-lg">←</span> QUAY LẠI DASHBOARD
+      </button>
+
       <h1 className="text-3xl font-bold text-center text-blue-800 uppercase">Quản lý Nhập Kho</h1>
 
       {/* --- PHẦN 1: BỘ LỌC --- */}
@@ -187,7 +178,6 @@ export default function StockManagement() {
         
         {/* --- PHẦN 2: FORM NHẬP (BÊN TRÁI) --- */}
         <div className="lg:col-span-1 bg-white rounded shadow border border-gray-200 overflow-hidden h-fit sticky top-4">
-          {/* TABS HEADER */}
           <div className="flex border-b">
             <button
               className={`flex-1 py-3 font-bold text-sm uppercase ${activeTab === "EXISTING" ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-600"}`}
@@ -204,8 +194,6 @@ export default function StockManagement() {
           </div>
 
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            
-            {/* A. INPUT SẢN PHẨM (THAY ĐỔI THEO TAB) */}
             {activeTab === "EXISTING" ? (
               <div className="space-y-2">
                 <label className="font-semibold text-gray-700">Chọn sản phẩm:</label>
@@ -247,7 +235,6 @@ export default function StockManagement() {
               </div>
             )}
 
-            {/* B. INPUT NHẬP KHO (DÙNG CHUNG) */}
             <div className="pt-4 border-t space-y-3">
                <div className="text-xs font-bold text-gray-400 uppercase">Thông tin lô hàng nhập</div>
                
@@ -257,42 +244,41 @@ export default function StockManagement() {
                />
 
                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-gray-500">Đơn vị nhập</label>
-                    <select
-                      name="unitImport" className="w-full border p-2 rounded text-sm"
-                      value={stockForm.unitImport} onChange={handleStockChange}
-                    >
-                      {IMPORT_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Quy đổi (ra lẻ)</label>
-                    <input
-                      type="number" name="unitImportQuantity" className="w-full border p-2 rounded text-sm"
-                      value={stockForm.unitImportQuantity} onChange={handleStockChange}
-                    />
-                  </div>
+                 <div>
+                   <label className="text-xs text-gray-500">Đơn vị nhập</label>
+                   <select
+                     name="unitImport" className="w-full border p-2 rounded text-sm"
+                     value={stockForm.unitImport} onChange={handleStockChange}
+                   >
+                     {IMPORT_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                   </select>
+                 </div>
+                 <div>
+                   <label className="text-xs text-gray-500">Quy đổi (ra lẻ)</label>
+                   <input
+                     type="number" name="unitImportQuantity" className="w-full border p-2 rounded text-sm"
+                     value={stockForm.unitImportQuantity} onChange={handleStockChange}
+                   />
+                 </div>
                </div>
 
                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-gray-700">SL Nhập</label>
-                    <input
-                      type="number" name="quantityImport" className="w-full border p-2 rounded text-sm font-bold text-blue-600"
-                      value={stockForm.quantityImport} onChange={handleStockChange} min="1"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Giá nhập (1 đơn vị)</label>
-                    <input
-                      type="number" name="importPrice" className="w-full border p-2 rounded text-sm"
-                      value={stockForm.importPrice} onChange={handleStockChange}
-                    />
-                  </div>
+                 <div>
+                   <label className="text-xs font-bold text-gray-700">SL Nhập</label>
+                   <input
+                     type="number" name="quantityImport" className="w-full border p-2 rounded text-sm font-bold text-blue-600"
+                     value={stockForm.quantityImport} onChange={handleStockChange} min="1"
+                   />
+                 </div>
+                 <div>
+                   <label className="text-xs text-gray-500">Giá nhập (1 đơn vị)</label>
+                   <input
+                     type="number" name="importPrice" className="w-full border p-2 rounded text-sm"
+                     value={stockForm.importPrice} onChange={handleStockChange}
+                   />
+                 </div>
                </div>
 
-               {/* PREVIEW */}
                <div className="bg-yellow-50 p-2 rounded text-sm border border-yellow-200 space-y-1">
                  <div className="flex justify-between">
                    <span>Cộng kho:</span>
@@ -318,7 +304,6 @@ export default function StockManagement() {
         {/* --- PHẦN 3: HIỂN THỊ DỮ LIỆU (BÊN PHẢI) --- */}
         <div className="lg:col-span-2 space-y-6">
           
-          {/* BẢNG 1: TỒN KHO HIỆN TẠI */}
           <div className="bg-white p-4 rounded shadow border border-gray-200">
              <h2 className="font-bold text-lg mb-3">🏭 Tồn kho hiện tại</h2>
              <div className="overflow-auto max-h-[300px]">
@@ -347,7 +332,6 @@ export default function StockManagement() {
              </div>
           </div>
 
-          {/* BẢNG 2: LỊCH SỬ NHẬP */}
           <div className="bg-white p-4 rounded shadow border border-gray-200">
              <h2 className="font-bold text-lg mb-3">📜 Lịch sử nhập hàng</h2>
              <div className="overflow-auto max-h-[400px]">
@@ -367,7 +351,6 @@ export default function StockManagement() {
                    {importHistory.map((entry) => (
                      <tr key={entry._id} className="hover:bg-gray-50">
                        <td className="border p-2 font-medium">
-                         {/* Xử lý an toàn nếu inventoryId bị null (do populate lỗi) */}
                          {entry.inventoryId?.name || entry.inventoryName || "N/A"}
                        </td>
                        <td className="border p-2">

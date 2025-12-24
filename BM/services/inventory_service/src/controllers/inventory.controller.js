@@ -87,5 +87,52 @@ export const InventoryController = {
       console.error("Lỗi createInventoryInternal:", error);
       res.status(400).json({ error: error.message });
     }
+  },
+
+  createSellStock: async (req, res) => {
+    const { items } = req.body;
+    try {
+      const updatedProducts = [];
+
+      // Bước 1: Kiểm tra tồn kho cho tất cả các mặt hàng trước
+      for (const item of items) {
+        const product = await Inventory.findById(item.inventoryId);
+        
+        if (!product) {
+          return res.status(404).json({ error: `Sản phẩm ID ${item.inventoryId} không tồn tại` });
+        }
+        
+        if (product.quantity < item.quantity) {
+          return res.status(400).json({ 
+            error: `Sản phẩm "${product.name}" không đủ tồn kho (Còn: ${product.quantity}, Cần: ${item.quantity})` 
+          });
+        }
+        updatedProducts.push({ product, sellQty: item.quantity });
+      }
+
+      // Bước 2: Chỉ khi tất cả đủ hàng mới tiến hành trừ kho
+      const resultDetails = [];
+      for (const entry of updatedProducts) {
+        entry.product.quantity -= entry.sellQty;
+        await entry.product.save();
+        
+        // Trả về thông tin cần thiết để Transaction Service tạo hóa đơn
+        resultDetails.push({
+          _id: entry.product._id,
+          price: entry.product.price,
+          name: entry.product.name
+        });
+      }
+
+      // Trả về thành công kèm thông tin giá tiền
+      res.json({ 
+        success: true, 
+        products: resultDetails 
+      });
+      
+    } catch (error) {
+      console.error("Lỗi createSellStock:", error);
+      res.status(500).json({ error: error.message });
+    }
   }
 };

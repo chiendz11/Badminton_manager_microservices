@@ -16,7 +16,7 @@ const sellHistorySchema = new mongoose.Schema({
   totalAmount: { type: Number, required: true }, // Tổng tiền của hóa đơn
   paymentMethod: { 
     type: String, 
-    enum: ["Cash", "Card", "Other"], 
+    enum: ["Cash", "Card", "Transfer", "Other"],
     default: "Cash" 
   }, // Phương thức thanh toán
   customer: {

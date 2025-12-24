@@ -12,7 +12,7 @@ export const TransactionController = {
   },
 
   getStockHistory: async (req, res) => {
-    console.log("vào controllelr")
+    console.log("vào controller get stock history")
     try {
       const result = await TransactionService.getStockHistory(req.query);
       res.json(result);
@@ -22,7 +22,7 @@ export const TransactionController = {
   },
 
   addSellHistory: async (req, res) => {
-    console.log("vào controllelr")
+    console.log("vào controllelr add sell history")
     try {
       const result = await TransactionService.createSellHistory(req.body);
       res.status(201).json(result);
@@ -32,12 +32,18 @@ export const TransactionController = {
   },
 
   getSellHistory: async (req, res) => {
-    console.log("vào controllelr")
+    console.log("🎯 Query nhận được:");
     try {
-      const result = await TransactionService.getSellHistory(req.query);
-      res.json({data: result});
+      // Truyền thẳng req.query vào service
+      const histories = await TransactionService.getSellHistories(req.query);
+      
+      return res.status(200).json({
+        success: true,
+        data: histories || []
+      });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error("🔥 Lỗi:", error.message);
+      return res.status(500).json({ success: false, error: error.message });
     }
   },
 
