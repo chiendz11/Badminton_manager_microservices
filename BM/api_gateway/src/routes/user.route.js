@@ -86,7 +86,7 @@ router.put("/users/me/avatar",
 );
 
 // 3. GET /api/users/:userId (Admin xem user cụ thể)
-router.patch("/users",
+router.patch("/users/:userId",
     authenticate,
     authorize([GATEWAY_ROLES.SUPER_ADMIN]),
     userProxy
