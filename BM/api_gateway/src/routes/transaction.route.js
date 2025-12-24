@@ -30,6 +30,12 @@ const transactionProxy = proxy(TRANSACTION_SERVICE_URL, {
 
 // Lấy lịch sử bán hàng của một trung tâm (có thể public)
 router.get("/transactions/sell/:centerId", transactionProxy);
+router.post(
+    "/transactions/stock/new",
+    authenticate,
+    authorize([GATEWAY_ROLES.ADMIN, GATEWAY_ROLES.SUPER_ADMIN]),
+    transactionProxy
+);
 router.get("/transactions/stock", transactionProxy);
 router.get("/transactions/sell", transactionProxy);
 

@@ -1,4 +1,5 @@
 import { InventoryService } from "../services/inventory.service.js";
+import Inventory from "../models/inventory.model.js";
 
 export const InventoryController = {
   createInventory: async (req, res) => {
@@ -64,4 +65,27 @@ export const InventoryController = {
       res.status(500).json({ success: false, message: error.message });
     }
   },
+
+  updateStockInternal: async (req, res) => {
+    console.log("internal")
+    try {
+      const { inventoryId, quantityChange } = req.body;
+      const result = await InventoryService.updateStock(inventoryId, quantityChange);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  },
+
+  createInventoryInternal: async (req, res) => {
+    console.log("internal")
+    try {
+      // Logic: Tạo sản phẩm mới trực tiếp vào DB của Inventory
+      const newItem = await Inventory.create(req.body);
+      res.status(201).json(newItem);
+    } catch (error) {
+      console.error("Lỗi createInventoryInternal:", error);
+      res.status(400).json({ error: error.message });
+    }
+  }
 };

@@ -21,4 +21,11 @@ export const InventoryService = {
     return await Inventory.find({ centerId });
   },
 
+  updateStock: async (id, quantityChange) => {
+    return await Inventory.findByIdAndUpdate(
+      id,
+      { $inc: { quantity: quantityChange } }, // Cộng dồn số lượng
+      { new: true }
+    );
+  }
 };
