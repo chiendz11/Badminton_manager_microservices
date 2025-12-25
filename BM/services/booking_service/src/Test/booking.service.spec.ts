@@ -11,9 +11,6 @@ import { PassPost } from '../Schema/pass-booking.schema';
 import { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
 import { Types } from 'mongoose';
 
-// ======================================================
-// 🛠️ MOCK FACTORY
-// ======================================================
 const createMockQuery = (returnValue: any) => {
   const query: any = {};
   query.find = jest.fn().mockReturnThis();
@@ -23,13 +20,11 @@ const createMockQuery = (returnValue: any) => {
   query.limit = jest.fn().mockReturnThis();
   query.select = jest.fn().mockReturnThis();
   query.lean = jest.fn().mockReturnThis();
-  // Allow the chain to be awaited
   query.exec = jest.fn().mockResolvedValue(returnValue);
   query.then = (resolve: any) => resolve(returnValue); 
   return query;
 };
 
-// Generic Mock Model
 const mockModel = {
   create: jest.fn(),
   find: jest.fn(),
@@ -44,17 +39,14 @@ const mockModel = {
   findOneAndDelete: jest.fn(),
 };
 
-// Valid Mongo ObjectId for testing
 const MOCK_ID = '507f1f77bcf86cd799439011';
 
-// Specific Mock for Booking
 class MockBookingModel {
   save: any;
   constructor(private data: any) {
     Object.assign(this, data);
     this.save = jest.fn().mockResolvedValue({ _id: MOCK_ID, ...this.data });
   }
-  // Static methods must correspond to the service logic
   static find = jest.fn();
   static findOne = jest.fn();
   static findById = jest.fn();
@@ -87,8 +79,7 @@ describe('BookingService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
-    // 🟢 RESET DEFAULT BEHAVIOR (Crucial to prevent test pollution)
-    MockBookingModel.find.mockReturnValue(createMockQuery([])); // Default: No conflicts
+    MockBookingModel.find.mockReturnValue(createMockQuery([])); 
     MockBookingModel.findOne.mockReturnValue(createMockQuery(null));
     MockBookingModel.findById.mockReturnValue(createMockQuery(null));
     MockBookingModel.findByIdAndUpdate.mockReturnValue(createMockQuery(null));
@@ -96,7 +87,7 @@ describe('BookingService', () => {
     MockBookingModel.aggregate.mockResolvedValue([]);
     MockBookingModel.insertMany.mockResolvedValue([]);
 
-    // Reset generic models
+
     mockModel.find.mockReturnValue(createMockQuery([]));
     mockModel.findOne.mockReturnValue(createMockQuery(null));
     
@@ -121,9 +112,6 @@ describe('BookingService', () => {
     passPostModel = module.get(getModelToken(PassPost.name));
   });
 
-  // ======================================================
-  // ✅ 1. CREATE BOOKING
-  // ======================================================
   describe('createBooking', () => {
     const mockInput: any = {
       userId: 'user_1',
@@ -152,9 +140,6 @@ describe('BookingService', () => {
     });
   });
 
-  // ======================================================
-  // ✅ 2. CREATE FIXED BOOKINGS (BATCH)
-  // ======================================================
   describe('createFixedBookings', () => {
     // it('should create multiple bookings', async () => {
     //     const futureDate = new Date();
@@ -197,9 +182,6 @@ describe('BookingService', () => {
     });
   });
 
-  // ======================================================
-  // ✅ 3. UPDATE STATUS & RABBITMQ
-  // ======================================================
   describe('updateBookingStatusToConfirmed', () => {
     it('should confirm booking and add points', async () => {
         const mockBooking = { _id: MOCK_ID, userId: 'u1', price: 50000, save: jest.fn() };
@@ -224,9 +206,6 @@ describe('BookingService', () => {
     });
   });
 
-  // ======================================================
-  // ✅ 4. BASIC CRUD (Find, Delete)
-  // ======================================================
   describe('Basic Finders', () => {
     it('findAllBookings', async () => {
         await service.findAllBookings();
@@ -234,9 +213,6 @@ describe('BookingService', () => {
     });
   });
 
-  // ======================================================
-  // ✅ 5. UPDATE OWNER
-  // ======================================================
   describe('updateBookingOwner', () => {
       it('should transfer owner', async () => {
         const mockBooking = { 
@@ -261,9 +237,6 @@ describe('BookingService', () => {
       });
   });
 
-  // ======================================================
-  // ✅ 6. COMPLEX QUERIES
-  // ======================================================
   
   describe('getPendingMappingDB', () => {
       it('should return a matrix of slots', async () => {
@@ -293,7 +266,6 @@ describe('BookingService', () => {
         MockBookingModel.countDocuments.mockReturnValue(createMockQuery(1));
         MockBookingModel.find.mockReturnValue(createMockQuery(mockBookings));
         
-        // 🟢 FIX: Ensure mocks return data that matches the mapping logic
         centerModel.find.mockReturnValue(createMockQuery([{ centerId: 'center_1', name: 'Center One' }]));
         courtModel.find.mockReturnValue(createMockQuery([{ courtId: 'court_1', name: 'Court A' }]));
 
@@ -304,9 +276,7 @@ describe('BookingService', () => {
       });
   });
 
-  // ======================================================
-  // ✅ 7. STATISTICS
-  // ======================================================
+
   describe('getUserStatistics', () => {
       it('should process aggregation results', async () => {
         userModel.findOne.mockReturnValue(createMockQuery({ points: 500 }));
@@ -322,9 +292,7 @@ describe('BookingService', () => {
       });
   });
 
-  // ======================================================
-  // ✅ 8. AVAILABILITY ALGORITHM
-  // ======================================================
+
   describe('checkAvailableCourtsForFixed', () => {
       it('should return courts that are NOT in conflict map', async () => {
         courtModel.find.mockReturnValue(createMockQuery([
@@ -340,7 +308,7 @@ describe('BookingService', () => {
         const result = await service.checkAvailableCourtsForFixed({
             centerId: 'c1',
             startDate: new Date(),
-            daysOfWeek: [new Date().getDay()], // Use today's day of week
+            daysOfWeek: [new Date().getDay()],
             timeslots: ["18:00"]
         });
         
