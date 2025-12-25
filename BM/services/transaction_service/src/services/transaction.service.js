@@ -100,36 +100,71 @@ export const TransactionService = {
 
   // transaction.service.js
   getSellHistories: async (queryData) => {
-    const { centerId, startDate, endDate, invoiceNumber } = queryData;
-    let query = {};
+  const { centerId, startDate, endDate, invoiceNumber } = queryData;
+  let query = {};
 
-    // SỬA TẠI ĐÂY: Kiểm tra kỹ giá trị centerId
-    if (centerId && centerId !== "" && centerId !== "null" && centerId !== "undefined") {
-      // Nếu bạn dùng mongoose và lưu centerId là ObjectId, hãy đảm bảo query khớp
-      // Ở đây dùng String là cách an toàn nhất nếu DB lưu dạng String
-      query.centerId = centerId; 
+  if (centerId && centerId !== "" && centerId !== "null") {
+    query.centerId = centerId; 
+  }
+
+  if (invoiceNumber) {
+    query.invoiceNumber = { $regex: invoiceNumber, $options: 'i' };
+  }
+
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      query.createdAt.$lte = end;
     }
+  }
 
-    if (invoiceNumber) {
-      query.invoiceNumber = { $regex: invoiceNumber, $options: 'i' };
-    }
+  // 1. Lấy danh sách hóa đơn bán hàng
+  const sellHistories = await SellHistory.find(query)
+    .populate('items.inventoryId')
+    .sort({ createdAt: -1 })
+    .lean(); // Dùng lean() để có thể chỉnh sửa object trả về
 
-    if (startDate || endDate) {
-      query.createdAt = {};
-      if (startDate) query.createdAt.$gte = new Date(startDate);
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        query.createdAt.$lte = end;
-      }
-    }
+  // 2. Lấy danh sách giá nhập từ StockHistory để tra cứu
+  // Chúng ta sẽ lấy giá nhập gần nhất của từng sản phẩm để tính lợi nhuận
+  const historiesWithProfit = await Promise.all(sellHistories.map(async (invoice) => {
+    let totalInvoiceProfit = 0;
 
-    console.log("🔍 Final Query sent to DB:", query); // Log này để kiểm tra query thực tế
+    const processedItems = await Promise.all(invoice.items.map(async (item) => {
+      // Tìm bản ghi nhập kho gần nhất của sản phẩm này trước thời điểm bán
+      const lastStock = await StockHistory.findOne({
+        inventoryId: item.inventoryId?._id,
+        createdAt: { $lte: invoice.createdAt }
+      }).sort({ createdAt: -1 });
 
-    return await SellHistory.find(query)
-      .populate('items.inventoryId')
-      .sort({ createdAt: -1 });
-  },
+      // Tính giá nhập đơn vị (importPrice = totalCost / totalAdded)
+      const importPrice = lastStock && lastStock.totalAdded > 0 
+        ? lastStock.totalCost / lastStock.totalAdded 
+        : 0;
+
+      const unitProfit = (item.unitPrice || 0) - importPrice;
+      const itemTotalProfit = unitProfit * (item.quantity || 0);
+      
+      totalInvoiceProfit += itemTotalProfit;
+
+      return {
+        ...item,
+        importPrice: importPrice, // Trả về thêm để Front-end biết giá nhập
+        profit: itemTotalProfit   // Lợi nhuận của từng món
+      };
+    }));
+
+    return {
+      ...invoice,
+      items: processedItems,
+      totalProfit: totalInvoiceProfit // Tổng lợi nhuận của cả hóa đơn
+    };
+  }));
+
+  return historiesWithProfit;
+},
 
   createSellHistory: async (payload) => {
     const { centerId, items, paymentMethod } = payload;
