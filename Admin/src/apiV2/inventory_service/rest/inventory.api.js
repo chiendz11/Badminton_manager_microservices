@@ -11,6 +11,17 @@ export async function importStock(data) {
   }
 }
 
+export async function importNewStock(payload) {
+  try {
+    // API này gọi sang TransactionController.importNewStock
+    const response = await axiosInstance.post('/api/transactions/stock/new', payload);
+    return response;
+  } catch (error) {
+    console.error('Error importing NEW stock:', error);
+    throw error;
+  }
+}
+
 /** ✔ Lịch sử nhập kho = Transaction Service → /api/transactions/stock */
 export async function getStockHistory(params = {}) {
   try {

@@ -3,6 +3,7 @@ import { TransactionController } from "../controllers/transaction.controller.js"
 
 const router = express.Router();
 
+router.post("/stock/new", TransactionController.importNewStock);
 router.post("/stock", TransactionController.addStockHistory);
 router.get("/stock", TransactionController.getStockHistory);
 

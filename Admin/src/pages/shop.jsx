@@ -1,373 +1,297 @@
-import React, { useState, useEffect, useContext, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { getSellHistories, createSellHistory } from "../apiV2/transaction_service/rest/transaction.api.js";
 import { getInventoryList } from "../apiV2/inventory_service/rest/inventory.api.js";
-import { getAllCentersGQL } from "../apiV2/center_service/graphql/center.api";
-import { AuthContext } from "../contexts/AuthContext";
-import LoadingSpinner from "../components/LoadingSpinner";
-import { ROLES } from "../constants/roles"; // Import ROLES từ constant
 
 export default function Shop() {
-  const { admin } = useContext(AuthContext); // Lấy thông tin user hiện tại
+  const navigate = useNavigate();
+
+  // 1. Cấu hình danh sách trung tâm
+  const centers = [
+    { id: "67ca6e3cfc964efa218ab7d8", name: "Nhà thi đấu quận Thanh Xuân" },
+    { id: "67ca6e3cfc964efa218ab7d9", name: "Nhà thi đấu quận Cầu Giấy" },
+    { id: "67ca6e3cfc964efa218ab7d7", name: "Nhà thi đấu quận Tây Hồ" },
+    { id: "67ca6e3cfc964efa218ab7da", name: "Nhà thi đấu quận Bắc Từ Liêm" },
+  ];
+
+  // 2. States quản lý danh sách và bộ lọc
   const [sellHistories, setSellHistories] = useState([]);
-  const [selectedCenter, setSelectedCenter] = useState(centers[0].id);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [selectedCenter, setSelectedCenter] = useState("");
+  const [searchInvoice, setSearchInvoice] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // States quản lý Modal & Giỏ hàng
   const [showModal, setShowModal] = useState(false);
   const [inventoryList, setInventoryList] = useState([]);
-  const [invoiceItems, setInvoiceItems] = useState({});
+  const [cart, setCart] = useState({}); 
   const [paymentMethod, setPaymentMethod] = useState("Cash");
-  const [customerName, setCustomerName] = useState("");
-  const [customerContact, setCustomerContact] = useState("");
-  const [totalAmount, setTotalAmount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 1. Fetch Centers
-  useEffect(() => {
-    const fetchCenters = async () => {
-      try {
-        setLoading(true);
-        const data = await getAllCentersGQL();
-        // Map dữ liệu và giữ lại các trường quan trọng để lọc
-        const mappedCenters = data.map(c => ({
-          id: c.centerId || c._id,
-          name: c.name,
-          centerManagerId: c.centerManagerId // Quan trọng để lọc quyền
-        }));
-        setAllCenters(mappedCenters);
-      } catch (err) {
-        console.error("Lỗi khi lấy danh sách trung tâm:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCenters();
-  }, []);
-
-  // 2. Filter Centers based on Role (Logic cốt lõi)
-  const myCenters = useMemo(() => {
-    // Nếu chưa load xong hoặc không có admin, trả về rỗng
-    if (!admin || !allCenters.length) return [];
-
-    // Nếu là SUPER_ADMIN -> Trả về tất cả
-    if (admin.role === ROLES.SUPER_ADMIN) {
-        return allCenters;
-    }
-
-    // Nếu là CENTER_MANAGER -> Lọc theo ID quản lý
-    // Lưu ý: userId từ context thường có format 'USER-UUID', cần xử lý giống file mẫu
-    const userId = admin.userId.replace("USER-", "");
-    
-    return allCenters.filter(c => 
-        (c.centerManagerId || "").replace("USER-", "") === userId
-    );
-  }, [allCenters, admin]);
-
-  // 3. Tự động chọn center đầu tiên khi myCenters thay đổi
-  useEffect(() => {
-      if (myCenters.length > 0) {
-          // Nếu selectedCenter hiện tại không nằm trong danh sách được phép (myCenters)
-          // hoặc chưa chọn gì -> Chọn cái đầu tiên của myCenters
-          const isSelectedValid = myCenters.find(c => c.id === selectedCenter);
-          if (!selectedCenter || !isSelectedValid) {
-              setSelectedCenter(myCenters[0].id);
-          }
-      } else {
-          setSelectedCenter(""); // Reset nếu không có center nào
-      }
-  }, [myCenters, selectedCenter]);
-
-
-  // 4. Fetch Histories & Calculate Total (Giữ nguyên)
+  // 3. Hàm lấy dữ liệu lịch sử bán hàng
   const fetchHistories = async () => {
     try {
-      const res = await getSellHistories();
-      setSellHistories(res.data.data || []);
+      setLoading(true);
+      const res = await getSellHistories({ 
+        centerId: selectedCenter, 
+        invoiceNumber: searchInvoice 
+      });
+      setSellHistories(res.data?.data || res.data || []);
     } catch (err) {
-      console.error(err);
-      // Removed alert to prevent spamming if API fails on load
-      console.error("Lỗi khi lấy danh sách hóa đơn.");
+      console.error("Lỗi tải lịch sử:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchHistories();
-  }, []);
+  }, [selectedCenter, searchInvoice]);
 
-  useEffect(() => {
-    const calculateTotal = () => {
-      return inventoryList.reduce((total, item) => {
-        const quantity = invoiceItems[item._id] || 0;
-        return total + (quantity * item.price);
-      }, 0);
-    };
-    setTotalAmount(calculateTotal());
-  }, [invoiceItems, inventoryList]);
+  // 4. Tính tổng doanh thu kỳ lọc
+  const totalAmount = useMemo(() => {
+    return sellHistories.reduce((sum, h) => sum + (h.totalAmount || 0), 0);
+  }, [sellHistories]);
 
-  // Open modal and fetch inventory
+  // 5. Mở Modal & Lấy kho
   const handleOpenModal = async () => {
+    if (!selectedCenter) return alert("Vui lòng chọn trung tâm trước khi lập hóa đơn!");
     try {
-      const res = await getInventoryList({ centerId: selectedCenter });
-      setInventoryList(res.data.data || []);
-      setInvoiceItems({});
+      const res = await getInventoryList(selectedCenter);
+      setInventoryList(res.data?.data || res.data || []);
+      setCart({});
+      setPaymentMethod("Cash");
       setShowModal(true);
     } catch (err) {
-      console.error("Inventory fetch error:", err);
-      alert("Lỗi khi lấy danh sách kho: " + (err.message || "Unknown error"));
+      alert("Lỗi: Không thể lấy danh sách sản phẩm từ kho!");
     }
   };
 
-  const handleQuantityChange = (id, value) => {
-    const item = inventoryList.find(i => i._id === id);
-    if (!item) return;
-    
-    // Ensure value is handled as a number
-    const numValue = Number(value);
-    const quantity = Math.max(0, Math.min(numValue, item.quantity || 0));
-    
-    setInvoiceItems(prev => ({ ...prev, [id]: quantity }));
-  };
+  // 6. Xử lý gửi dữ liệu thanh toán
+  const handleConfirmInvoice = async () => {
+    const items = Object.entries(cart)
+      .filter(([_, qty]) => qty > 0)
+      .map(([id, qty]) => ({ inventoryId: id, quantity: qty }));
 
-  const handleSubmit = async () => {
-    const items = inventoryList
-      .filter(item => invoiceItems[item._id] > 0)
-      .map(item => ({
-        inventoryId: item._id,
-        quantity: invoiceItems[item._id],
-        unitPrice: item.price
-      }));
-
-    if (items.length === 0) {
-      alert("Vui lòng nhập số lượng cho ít nhất 1 sản phẩm.");
-      return;
-    }
-
-    const payload = {
-      invoiceNumber: `INV-${Date.now()}`,
-      centerId: selectedCenter,
-      items,
-      totalAmount,
-      paymentMethod,
-      customer: { name: customerName, contact: customerContact }
-    };
+    if (items.length === 0) return alert("Vui lòng chọn ít nhất một sản phẩm!");
 
     try {
-      await createSellHistory(payload);
-      alert("Tạo hóa đơn thành công!");
-      setShowModal(false);
-      fetchHistories();
-      // Reset form
-      setCustomerName("");
-      setCustomerContact("");
-      setInvoiceItems({});
+      setIsSubmitting(true);
+      const payload = {
+        centerId: selectedCenter,
+        items,
+        paymentMethod 
+      };
+
+      const res = await createSellHistory(payload);
+
+      if (res.status === 201 || res.status === 200) {
+        alert("Thanh toán & Trừ kho thành công!");
+        setShowModal(false);
+        fetchHistories();
+      }
     } catch (err) {
-      console.error(err);
-      alert("Lỗi khi tạo hóa đơn.");
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || err.message;
+      alert("LỖI: " + errorMsg);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Filter histories Logic (Cập nhật để chỉ hiển thị history của center được phép)
-  const filteredHistories = sellHistories.filter(h => {
-    const date = new Date(h.createdAt);
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(endDate) : null;
-    
-    // Kiểm tra xem history này có thuộc về một trong các center mà user quản lý không
-    // (Phòng trường hợp user hack request để xem history của center khác)
-    const isAllowedCenter = myCenters.some(c => c.id === h.centerId);
-
-    return isAllowedCenter && 
-           (!selectedCenter || h.centerId === selectedCenter) &&
-           (!start || date >= start) &&
-           (!end || date <= end.setHours(23, 59, 59, 999));
-  });
-
-  const getCenterName = id => allCenters.find(c => c.id === id)?.name || "Không xác định"; // Dùng allCenters để lookup name cho chính xác
-
-  if (loading) return <LoadingSpinner fullPage />;
+  // 7. Tính tổng tiền tạm tính trong Modal
+  const subTotal = useMemo(() => {
+    return Object.entries(cart).reduce((sum, [id, qty]) => {
+      const item = inventoryList.find(p => p._id === id);
+      return sum + (item?.price || 0) * qty;
+    }, 0);
+  }, [cart, inventoryList]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-[#f8fafc] p-6 md:p-10 text-slate-900 font-sans">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-800">Quản lý Bán Hàng</h1>
-          <button
+        {/* NÚT QUAY LẠI DASHBOARD */}
+        <button 
+          onClick={() => navigate("/dashboard")} 
+          className="mb-4 flex items-center gap-2 text-slate-400 hover:text-indigo-600 transition-colors font-bold text-xs uppercase tracking-widest"
+        >
+          <span className="text-lg">←</span> QUAY LẠI DASHBOARD
+        </button>
+        {/* HEADER - Đã giảm cỡ chữ tiêu đề và nút */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-5">
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-800 uppercase italic">
+              Quản Lý Bán Hàng
+            </h1>
+            <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Lịch sử giao dịch xuất kho</p>
+          </div>
+          <button 
             onClick={handleOpenModal}
-            className={`px-6 py-2 rounded-lg shadow-sm transition-colors flex items-center text-white ${
-                !selectedCenter ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-            disabled={!selectedCenter}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-7 py-3 rounded-2xl font-bold shadow-lg shadow-indigo-100 transition-all active:scale-95 flex items-center gap-2 text-sm"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-            </svg>
-            Tạo Hóa Đơn Mới
+            <span>+ TẠO HÓA ĐƠN</span>
           </button>
         </div>
 
-        {/* Filter Section */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Trung tâm</label>
-              <select
-                value={selectedCenter}
-                onChange={e => setSelectedCenter(e.target.value)}
-                className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                disabled={myCenters.length === 0}
-              >
-                {myCenters.length === 0 ? (
-                    <option value="">Bạn không quản lý trung tâm nào</option>
-                ) : (
-                    myCenters.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                    ))
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Từ ngày</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Đến ngày</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        {/* BỘ LỌC */}
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 mb-10 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Chọn trung tâm</label>
+            <select 
+              className="w-full bg-slate-50 border-none rounded-xl p-4 font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none appearance-none cursor-pointer text-sm"
+              value={selectedCenter}
+              onChange={(e) => setSelectedCenter(e.target.value)}
+            >
+              <option value="">-- Tất cả trung tâm --</option>
+              {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tra cứu hóa đơn</label>
+            <input 
+              type="text"
+              placeholder="Nhập mã INV-..."
+              className="w-full bg-slate-50 border-none rounded-xl p-4 font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+              value={searchInvoice}
+              onChange={(e) => setSearchInvoice(e.target.value)}
+            />
           </div>
         </div>
 
-        {/* Sales Table */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mã HĐ</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trung Tâm</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ngày Tạo</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tổng Tiền</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PTTT</th>
+        {/* BẢNG LỊCH SỬ - Đã giảm cỡ chữ số tiền */}
+        <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Hóa đơn</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Sản phẩm xuất</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">PTTT</th>
+                <th className="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Thành tiền</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredHistories.map(h => (
-                <tr key={h._id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{h.invoiceNumber}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getCenterName(h.centerId)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(h.createdAt).toLocaleDateString('vi-VN', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                    {h.totalAmount.toLocaleString('vi-VN')}₫
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                      {h.paymentMethod}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-slate-50">
+              {loading ? (
+                <tr><td colSpan="4" className="p-20 text-center font-bold text-slate-300 animate-pulse">ĐANG TẢI...</td></tr>
+              ) : sellHistories.length > 0 ? (
+                sellHistories.map(h => (
+                  <tr key={h._id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="p-6">
+                      <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg text-[11px]">
+                        {h.invoiceNumber}
+                      </span>
+                    </td>
+                    <td className="p-6">
+                      {h.items?.map((item, idx) => (
+                        <div key={idx} className="text-sm font-bold text-slate-600 mb-1">
+                          • {item.inventoryId?.name || "N/A"} <span className="text-slate-300">x{item.quantity}</span>
+                        </div>
+                      ))}
+                    </td>
+                    <td className="p-6 text-center">
+                      <span className="text-[9px] font-black px-2.5 py-1 bg-slate-100 rounded-md text-slate-500 uppercase">
+                        {h.paymentMethod}
+                      </span>
+                    </td>
+                    <td className="p-6 text-right">
+                      <span className="text-lg font-black text-slate-800 tracking-tight italic">
+                        {h.totalAmount?.toLocaleString()}₫
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr><td colSpan="4" className="p-20 text-center text-slate-300 font-bold uppercase italic tracking-widest">Không có dữ liệu</td></tr>
+              )}
             </tbody>
+            {/* TFOOT - Đã đổi sang màu nhạt (Slate-100) */}
+            <tfoot className="bg-slate-100 border-t border-slate-200">
+              <tr>
+                <td colSpan="3" className="p-8 text-right font-black text-slate-400 uppercase tracking-widest text-[10px]">Tổng doanh thu chọn lọc:</td>
+                <td className="p-8 text-right font-black text-indigo-600 text-2xl tracking-tighter italic">
+                  {totalAmount.toLocaleString()}₫
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
+      </div>
 
-        {/* Modal (Giữ nguyên phần UI Modal) */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="px-6 py-4 border-b flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-800">
-                  Tạo Hóa Đơn Mới - {getCenterName(selectedCenter)}
-                </h2>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+      {/* MODAL CHECKOUT - Đã giảm cỡ chữ số tiền tạm tính */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in duration-200">
+            
+            <div className="p-8 border-b bg-slate-50/50 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-black text-slate-800 tracking-tight uppercase italic">Xuất Kho Bán Lẻ</h2>
+                <p className="text-indigo-500 font-black text-[9px] uppercase tracking-widest mt-1">
+                  {centers.find(c => c.id === selectedCenter)?.name}
+                </p>
               </div>
-
-              <div className="flex-1 overflow-y-auto p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Tên Khách Hàng</label>
-                    <input type="text" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500" />
+              <button onClick={() => setShowModal(false)} className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-slate-300 hover:text-red-500 shadow-sm text-2xl">×</button>
+            </div>
+            
+            <div className="p-8 overflow-y-auto flex-1 space-y-4">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sản phẩm & Số lượng</label>
+              {inventoryList.map(item => (
+                <div key={item._id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-transparent hover:border-slate-200 transition-all">
+                  <div className="flex-1">
+                    <div className="font-bold text-slate-700 text-base">{item.name}</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">
+                      Tồn kho: <span className="text-indigo-500">{item.quantity}</span> | Giá: {item.price?.toLocaleString()}₫
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Liên Hệ</label>
-                    <input type="text" value={customerContact} onChange={e => setCustomerContact(e.target.value)} className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Phương Thức TT</label>
-                    <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500">
-                      <option value="Cash">Tiền Mặt</option>
-                      <option value="Card">Thẻ</option>
-                      <option value="Other">Khác</option>
-                    </select>
-                  </div>
+                  <input 
+                    type="number" min="0" max={item.quantity}
+                    className="w-20 bg-white border-none rounded-xl p-2.5 text-center font-black text-indigo-600 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    placeholder="0"
+                    value={cart[item._id] || ""}
+                    onChange={(e) => setCart({...cart, [item._id]: Math.max(0, parseInt(e.target.value) || 0)})}
+                  />
                 </div>
+              ))}
 
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sản Phẩm</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tồn Kho</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Đơn Giá</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Số Lượng</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {inventoryList.length > 0 ? (
-                        inventoryList.map(item => (
-                          <tr key={item._id} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.name}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{item.quantity}</td>
-                            <td className="px-4 py-3 text-sm text-gray-900">{item.price.toLocaleString('vi-VN')}₫</td>
-                            <td className="px-4 py-3 text-right">
-                              <input type="number" min="0" max={item.quantity} value={invoiceItems[item._id] || ""} onChange={e => handleQuantityChange(item._id, e.target.value)} className="w-24 p-1 border rounded-md text-right focus:ring-2 focus:ring-blue-500" />
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                         <tr><td colSpan="4" className="px-4 py-3 text-center text-sm text-gray-500">Kho hàng trống</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+              <div className="pt-6 space-y-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Hình thức thanh toán</label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { id: "Cash", label: "Tiền mặt", icon: "💵" },
+                    { id: "Transfer", label: "Chuyển khoản", icon: "🏦" },
+                    { id: "Card", label: "Quẹt thẻ", icon: "💳" }
+                  ].map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => setPaymentMethod(m.id)}
+                      className={`p-4 rounded-2xl border-2 flex flex-col items-center gap-1 transition-all ${
+                        paymentMethod === m.id 
+                        ? "border-indigo-600 bg-indigo-50 text-indigo-600 shadow-md" 
+                        : "border-slate-100 bg-white text-slate-400 hover:border-slate-200"
+                      }`}
+                    >
+                      <span className="text-xl">{m.icon}</span>
+                      <span className="text-[9px] font-black uppercase tracking-tight">{m.label}</span>
+                    </button>
+                  ))}
                 </div>
-
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg flex items-center justify-between">
-                  <span className="text-lg font-semibold text-gray-800">Tổng Cộng:</span>
-                  <span className="text-2xl font-bold text-blue-600">{totalAmount.toLocaleString('vi-VN')}₫</span>
-                </div>
-              </div>
-
-              <div className="px-6 py-4 border-t flex justify-end space-x-3">
-                <button onClick={() => setShowModal(false)} className="px-5 py-2 text-gray-600 hover:text-gray-800 transition-colors">Hủy Bỏ</button>
-                <button onClick={handleSubmit} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors">Xác Nhận Hóa Đơn</button>
               </div>
             </div>
+
+            <div className="p-8 border-t bg-slate-50 flex justify-between items-center gap-6">
+              <div>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tổng tiền tạm tính</span>
+                <span className="text-2xl font-black text-slate-900 tracking-tighter italic">
+                  {subTotal.toLocaleString()}₫
+                </span>
+              </div>
+              <button 
+                onClick={handleConfirmInvoice}
+                disabled={isSubmitting}
+                className="flex-1 max-w-[180px] bg-indigo-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-indigo-100 disabled:bg-slate-300 transition-all active:scale-95 text-sm uppercase"
+              >
+                {isSubmitting ? "Xử lý..." : "Xác nhận"}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

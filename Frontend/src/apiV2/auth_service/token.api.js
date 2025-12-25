@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost:8080";
+const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || "http://localhost";
 const CLIENT_ID = import.meta.env.VITE_CLIENT_ID; // Ví dụ: "USER_UI_ID"
 
 // 💡 TẠO INSTANCE RIÊNG: Chỉ dùng để refresh token

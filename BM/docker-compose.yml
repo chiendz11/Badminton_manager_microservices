@@ -347,7 +347,7 @@ services:
       dockerfile: Dockerfile
     container_name: inventory_service
     expose:
-      - "8086"
+      - "8089"
     environment:
       - NODE_ENV=${NODE_ENV}
       - PORT=${INVENTORY_PORT}
