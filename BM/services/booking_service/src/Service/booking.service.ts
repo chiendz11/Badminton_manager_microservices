@@ -8,7 +8,7 @@ import {
   HttpStatus
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import mongoose, { Model } from 'mongoose';
+import mongoose, { Model, Types } from 'mongoose';
 import { startOfDay, endOfDay } from 'date-fns';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -19,13 +19,14 @@ import { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
 import { Booking, BookingDocument, BookingStatus, BookingType } from '../Schema/booking.schema';
 import { Court, CourtDocument } from '../Schema/court.schema';
 import { Center } from "../Schema/center.schema";
-import { User } from 'src/Schema/user.schema';
-import { CourtBookingDetail } from 'src/Schema/court-booking-detail.schema';
-import { PricingSlot } from 'src/Schema/center-pricing.schema';
+import { User } from '../Schema/user.schema';
+import { CourtBookingDetail } from '../Schema/court-booking-detail.schema';
+import { PricingSlot } from '../Schema/center-pricing.schema';
 
 // --- DTOs ---
 import { CreateBookingDTO } from '../DTO/create-booking.DTO';
-import { GetHistoryDto } from 'src/DTO/get-history.DTO';
+import { GetHistoryDto } from '../DTO/get-history.DTO';
+import { PassPost, PassPostDocument, PassPostStatus } from '../Schema/pass-booking.schema';
 
 const START_HOUR = 5;
 const END_HOUR = 24;
@@ -41,6 +42,9 @@ export class BookingService {
   constructor(
     @InjectQueue('booking-expiration')
     private bookingQueue: Queue,
+
+    @InjectModel(PassPost.name) 
+    private passPostModel: Model<PassPostDocument>,
 
     @InjectModel(Booking.name)
     private bookingModel: Model<BookingDocument>,
@@ -221,6 +225,16 @@ export class BookingService {
       bookingId: savedBooking._id.toString(),
       userId: userId
     }, { delay: 5 * 60 * 1000, removeOnComplete: true }
+    );
+    this.amqpConnection.publish(
+      'notification_exchange', // 👈 Dùng chung exchange với bên Social
+      'create_notification',   // Routing Key
+      {
+        userId: userId,
+        notiMessage: `Bạn đã đặt sân tại ${center.name} thành công! Vui lòng thanh toán trong 5 phút.`,
+        notiType: 'BOOKING_SUCCESS',
+        isRead: false
+      }
     );
 
     return savedBooking;
@@ -408,6 +422,16 @@ export class BookingService {
         }
       );
       console.log(`[RabbitMQ] Published user.points.updated: User ${booking.userId} +${pointsEarned}`);
+      this.amqpConnection.publish(
+        'notification_exchange', // 👈 Dùng chung exchange với bên Social
+        'create_notification',   // Routing Key
+        {
+          userId: booking.userId,
+          notiMessage: `Bạn đã thanh toán sân thành công!`,
+          notiType: 'PAYMENT_SUCCESS',
+          isRead: false
+        }
+      );
     } catch (error) {
       console.error('[RabbitMQ] Publish error:', error);
     }
@@ -448,6 +472,95 @@ export class BookingService {
       { isDeleted: true },
       { new: true },
     ).exec();
+  }
+
+  
+  // ==================================================================
+  // 🔄 UPDATE OWNER (Query tên từ User DB)
+  // ==================================================================
+  // ==================================================================
+  // 🔄 UPDATE OWNER, DELETE POST & NOTIFY (WITH NAMES)
+  // ==================================================================
+  async updateBookingOwner(bookingId: string, newUserId: string): Promise<Booking> {
+    
+    const booking = await this.bookingModel.findById(bookingId);
+    if (!booking) throw new NotFoundException(`Booking ${bookingId} không tồn tại.`);
+    const oldUserId = booking.userId;
+
+    // 2. Query User (Dùng .lean() để lấy object thuần JS, tránh lỗi virtual field)
+    const [newUser, oldUser] = await Promise.all([
+      this.userModel.findOne({ userId: newUserId }).lean().exec(),
+      this.userModel.findOne({ userId: oldUserId }).lean().exec()
+    ]);
+
+    // Debug log để kiểm tra data user
+    console.log("👉 New User Data:", newUser); 
+
+    if (!newUser) throw new NotFoundException('Người nhận không tồn tại.');
+
+    // 3. Xử lý tên (Fix lỗi Unknown) - Quét hết các trường có thể lưu tên
+    const newUserName = newUser.name || newUser['fullName'] || newUser['userName'] || "Người dùng ẩn danh";
+    const oldUserName = oldUser ? (oldUser.name || oldUser['fullName'] || oldUser['userName']) : "Người dùng ẩn danh";
+    const dateStr = new Date(booking.bookDate).toLocaleDateString('vi-VN');
+
+    // 4. Update Booking
+    booking.userId = newUserId;
+    booking.userName = newUserName; 
+    const savedBooking = await booking.save();
+    console.log(`✅ Đã đổi chủ booking sang: ${newUserName}`);
+
+    // 5. Xóa bài Post (QUÉT MỌI TRƯỜNG HỢP ID và FIELD NAME)
+    const deleteConditions: any[] = [
+        { bookingId: bookingId }, // Case 1: Lưu String
+        { booking: bookingId }    // Case 2: Lưu String (tên field khác)
+    ];
+
+    // Case 3 & 4: Ép kiểu ObjectId nếu hợp lệ
+    if (Types.ObjectId.isValid(bookingId)) {
+        const objId = new Types.ObjectId(bookingId);
+        deleteConditions.push({ bookingId: objId }); 
+        deleteConditions.push({ booking: objId });   
+    }
+
+    const deleteResult = await this.passPostModel.findOneAndDelete({ 
+        $or: deleteConditions 
+    });
+
+    if (deleteResult) {
+        console.log(`🗑️ Đã xóa bài Post ID: ${deleteResult._id}`);
+    } else {
+        console.warn(`⚠️ Không tìm thấy bài Post nào dính dáng tới bookingId: ${bookingId} để xóa.`);
+    }
+
+    // ==================================================================
+    // 🔔 BẮN NOTIFICATION
+    // ==================================================================
+
+    // 📩 1. Bắn cho thằng BÁN (Chủ cũ) -> Báo là đã pass cho thằng MỚI
+    this.amqpConnection.publish(
+      'notification_exchange', 
+      'create_notification',   
+      {
+        userId: oldUserId,
+        notiMessage: `Bạn đã pass sân (${dateStr}) thành công cho người chơi ${newUserName}.`,
+        notiType: 'TRANSFER_SENT_SUCCESS',
+        isRead: false
+      }
+    );
+
+    // 📩 2. Bắn cho thằng MUA (Chủ mới) -> Báo là nhận được từ thằng CŨ
+    this.amqpConnection.publish(
+      'notification_exchange', 
+      'create_notification',   
+      {
+        userId: newUserId,
+        notiMessage: `Bạn đã nhận sân (${dateStr}) thành công từ người chơi ${oldUserName}.`,
+        notiType: 'TRANSFER_RECEIVE_SUCCESS',
+        isRead: false
+      }
+    );
+
+    return savedBooking;
   }
 
   async getPendingMappingDB(centerId: string, dateStr: string | Date) {

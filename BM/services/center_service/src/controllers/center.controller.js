@@ -161,3 +161,20 @@ export const uploadCenterImage = async (req, res) => {
         return res.status(500).json({ message: error.message });
     }
 };
+
+// ----------------------------------------------------------------
+// 7. GET COURT BY ID
+// ----------------------------------------------------------------
+export const getCourtById = async (req, res) => {
+    try {
+        const { courtId } = req.params;
+        
+        // Gọi Service
+        const court = await CenterService.getCourtById(courtId);
+
+        return res.status(200).json(court);
+    } catch (error) {
+        // Tái sử dụng hàm handleError cũ
+        handleError(res, error);
+    }
+};

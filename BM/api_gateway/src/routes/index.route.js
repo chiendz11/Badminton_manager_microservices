@@ -8,6 +8,7 @@ import ratingRoutes from "./rating.route.js";
 import newsRoutes from "./news.route.js";
 import inventoryRoutes from "./inventory.route.js";
 import transactionRoutes from "./transaction.route.js";
+import notificationRoutes from "./notification.route.js"
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.use( userRoutes);
 router.use(centerRoutes);
 router.use(bookingRoutes);
 router.use(socialRoutes) // <--- Sử dụng route mới
-
+router.use(notificationRoutes);
 router.use(ratingRoutes); 
 router.use(newsRoutes);
 router.use(inventoryRoutes);

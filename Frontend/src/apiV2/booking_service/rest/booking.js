@@ -39,6 +39,40 @@ export const confirmBookingToDB = async ({ centerId, bookDate, userName, courtBo
   }
 };
 
+export const addPassBookingPost = async ({bookingId, resalePrice, desc}) => {
+  try {
+    const response = await axiosInstance.post("/api/booking/pass-booking/create", {
+      bookingId, 
+      resalePrice,
+      desc,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error add pass booking to DB:", error.response?.data || error.message);
+    throw error;
+  }
+}
+
+export const getAllPastBookingPost = async () => {
+  try {
+    const response = await axiosInstance.get("/api/booking/pass-booking/list");
+    return response.data;
+  } catch (error) {
+    console.error("Error list bookings to DB:", error.response?.data || error.message);
+    throw error;
+  }
+}
+
+export const getAllMyPassBookingPost = async () => {
+  try {
+    const response = await axiosInstance.get("/api/booking/pass-booking/my-posts");
+    return response.data;
+  } catch (error) {
+    console.error("Error list bookings to DB:", error.response?.data || error.message);
+    throw error;
+  }
+}
+
 // --- CÁC HÀM MỚI THÊM VÀO ---
 
 /**
@@ -89,3 +123,27 @@ export const cancelBooking = async (bookingId) => {
 export const deleteBooking = async (bookingId) => {
     return axiosInstance.delete(`/api/booking/${bookingId}`);
 }
+
+export const toggleInterest = async (postId) => {
+    return axiosInstance.post(`api/booking/pass-booking/interest/${postId}`);
+}
+
+export const getAllPostInterested = async (postId) => {
+    return axiosInstance.get(`api/booking/pass-booking/interest/users/${postId}`);
+}
+
+export const checkIsInterested = async (postId) => {
+    // Kết quả trả về sẽ là: { isInterested: true/false }
+    const response = await axiosInstance.get(`api/booking/pass-booking/interest/check/${postId}`);
+    return response.data;
+}
+
+export const transferOwner = async (bookingId, newUserId) => {
+    // Kết quả trả về sẽ là: { isInterested: true/false }
+    const response = await axiosInstance.patch(`api/booking/transfer-owner`, {
+      bookingId: bookingId,
+      newUserId: newUserId,
+    });
+    return response.data;
+}
+

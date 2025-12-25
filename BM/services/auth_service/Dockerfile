@@ -4,7 +4,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-# Cài đặt TOÀN BỘ gói (cả devDependencies) để có thể chạy lệnh prisma generate
+# Cài đặt TOÀN BỘ gói (cả devDependencies)
 RUN npm ci
 
 # ----------------------------------------------------
@@ -12,10 +12,14 @@ RUN npm ci
 # ----------------------------------------------------
 FROM node:22-alpine AS builder
 WORKDIR /app
+
+# 🔥 [FIX QUAN TRỌNG]: Cài openssl NGAY TẠI ĐÂY để tải Prisma Engine
+RUN apk add --no-cache openssl ca-certificates
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# 💡 Tạo Prisma Client (File sẽ được tạo trong node_modules/.prisma)
+# 💡 Bây giờ lệnh này sẽ chạy mượt mà vì đã có openssl
 RUN npx prisma generate
 
 # ----------------------------------------------------
@@ -24,7 +28,7 @@ RUN npx prisma generate
 FROM node:22-alpine AS runner
 WORKDIR /app
 
-# Cài đặt openssl và dumb-init
+# Cài đặt openssl và dumb-init cho môi trường chạy
 RUN apk add --no-cache openssl dumb-init
 
 ENV NODE_ENV=production
@@ -32,13 +36,13 @@ ENV NODE_ENV=production
 # 1. Copy package.json
 COPY package*.json ./
 
-# 2. Cài đặt dependencies production (để có các gói khác ngoài prisma)
+# 2. Cài đặt dependencies production
 RUN npm ci --omit=dev
 
-# 3. COPY QUAN TRỌNG ĐÃ SỬA:
+# 3. COPY QUAN TRỌNG:
 # Copy thư mục @prisma (chứa định nghĩa)
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-# 💡 FIX LỖI: Copy thư mục .prisma (chứa Client thật và Binary engine đã generate)
+# Copy thư mục .prisma (chứa Client thật và Binary engine đã generate)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
 # Copy thư mục prisma (chứa schema)

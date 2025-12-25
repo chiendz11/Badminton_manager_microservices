@@ -159,6 +159,67 @@ router.get("/user/:userId/booking-history",
     bookingProxy
 );
 
+router.post("/booking/pass-booking/create",
+    authenticate,
+     authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy
+);
+
+router.get("/booking/pass-booking/list",
+    authenticate,
+     authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy
+);
+
+router.get("/booking/pass-booking/my-posts",
+    authenticate,
+     authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy
+);
+
+router.post("/booking/pass-booking/interest/:postId",
+    authenticate,
+     authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy
+);
+
+router.get("/booking/pass-booking/interest/count/:postId",
+    authenticate,
+     authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy
+);
+
+router.get("/booking/pass-booking/interest/users/:postId",
+    authenticate,
+     authorize([
+        GATEWAY_ROLES.USER
+    ]),
+    bookingProxy
+);
+
+router.get("/booking/pass-booking/interest/check/:postId",
+    authenticate,               // Cần đăng nhập để biết ai đang check
+    authorize([GATEWAY_ROLES.USER]), 
+    bookingProxy                // Proxy chuyển request xuống Service
+);
+
+router.patch("/booking/transfer-owner",
+    authenticate,               // Cần đăng nhập để biết ai đang check
+    authorize([GATEWAY_ROLES.USER]), 
+    bookingProxy                // Proxy chuyển request xuống Service
+);
+
+
 // --- Các route mở rộng khác (Booking History, Cancel...) ---
 // Bạn có thể thêm vào sau tương tự như trên
 

@@ -1,9 +1,9 @@
 import { Injectable, InternalServerErrorException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
-import { Friendship } from "src/Schema/friendship.schema";
+import { Friendship } from '../Schema/friendship.schema';
 import { Logger } from "@nestjs/common";
 import { Model, Mongoose } from "mongoose";
-import { Conversation, ConversationDocument, ConversationType } from "src/Schema/conversation.schema";
+import { Conversation, ConversationDocument, ConversationType } from "../Schema/conversation.schema";
 
 @Injectable()
 export class ConversationService {

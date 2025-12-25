@@ -7,7 +7,8 @@ import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from 'rxjs';
 import { Logger } from "@nestjs/common";
 import { ConversationService } from "./conversation.service";
-import { UserDocument, User } from "src/Schema/user.schema";
+import { UserDocument, User } from "../Schema/user.schema";
+import { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
 
 export const enum FriendshipFilterType {
     NOT_FRIEND = 'not_friend',
@@ -24,11 +25,32 @@ export class FriendshipService {
         @InjectModel(Friendship.name)
         private friendshipModel: Model<FriendshipDocument>,
         private readonly httpService: HttpService,
-        private readonly conversationService: ConversationService
+        private readonly conversationService: ConversationService,
+        private readonly amqpConnection: AmqpConnection,
     ){}
 
     async createFriendship(requesterId: string, addresseeId: string): Promise<Friendship> {
         const newFriendship = new this.friendshipModel({ requesterId, addresseeId });
+        const sender = await this.userModel.findOne({ userId: requesterId }).lean();
+        const senderName = sender ? sender.name : 'Ai đó';
+
+        // B. Bắn tin sang RabbitMQ
+        this.amqpConnection.publish(
+            'notification_exchange', // Exchange
+            'create_notification',   // Routing Key
+            {
+                // QUAN TRỌNG: Gửi cho người được mời (Addressee)
+                userId: addresseeId, 
+                
+                // Nội dung: "Huy đã gửi lời mời kết bạn cho bạn"
+                notiMessage: `${senderName} đã gửi lời mời kết bạn cho bạn.`,
+                
+                // Loại noti (Để frontend hiện icon dấu cộng hoặc avatar người gửi)
+                notiType: 'FRIEND_REQUEST',
+                
+                isRead: false
+            }
+        );
         return newFriendship.save();
     }
 
@@ -45,6 +67,22 @@ export class FriendshipService {
         if (!acceptedFriendship) {
             throw new NotFoundException("Friend request unsuccessful");
         }
+        const accepter = await this.userModel.findOne({ userId: userId }).lean();
+        const accepterName = accepter ? accepter.name : 'Một người bạn';
+        this.amqpConnection.publish(
+            'notification_exchange', // Exchange
+            'create_notification',   // Routing Key
+            {
+                // Gửi cho người đã gửi lời mời ban đầu (friendId)
+                userId: friendId, 
+                
+                // Nội dung: "Nguyễn Văn A đã chấp nhận..."
+                notiMessage: `${accepterName} đã chấp nhận lời mời kết bạn!`,
+                
+                notiType: 'FRIEND_ACCEPT',
+                isRead: false
+            }
+        );
         return acceptedFriendship;
     }
 

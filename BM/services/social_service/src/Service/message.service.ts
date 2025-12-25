@@ -6,9 +6,9 @@ import { FriendshipStatus } from "../Schema/friendship.schema";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from 'rxjs';
 import { Logger } from "@nestjs/common";
-import { Message, MessageDocument } from "src/Schema/message.schema";
-import { ConversationDocument } from "src/Schema/conversation.schema";
-import { Conversation } from "src/Schema/conversation.schema";
+import { Message, MessageDocument } from "../Schema/message.schema";
+import { ConversationDocument } from "../Schema/conversation.schema";
+import { Conversation } from "../Schema/conversation.schema";
 
 @Injectable()
 export class MessageService {

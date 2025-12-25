@@ -11,13 +11,14 @@ import {
   HttpStatus,
   HttpCode,
 } from '@nestjs/common';
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpException } from '@nestjs/common';
 import { BookingService } from '../Service/booking.service';
 import { CreateBookingDTO } from '../DTO/create-booking.DTO';
 import { BookingStatus } from '../Schema/booking.schema';
 import { GatewayAuthGuard } from '../gateway-auth.guard';
 import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { GetHistoryDto } from 'src/DTO/get-history.DTO';  
+import { TransferBookingDto } from '../DTO/transfer-booking.DTO'
 
 
 @Controller()
@@ -26,6 +27,29 @@ export class BookingController {
   constructor(
     private readonly bookingService: BookingService
   ) { }
+
+  @Patch('api/transfer-owner')
+  async transferOwner(@Body() body: TransferBookingDto) {
+    try {
+      // Gọi cái hàm service bạn vừa viết
+      const updatedBooking = await this.bookingService.updateBookingOwner(
+        body.bookingId, 
+        body.newUserId
+      );
+
+      return {
+        statusCode: HttpStatus.OK,
+        message: 'Chuyển quyền sở hữu booking thành công',
+        data: updatedBooking
+      };
+    } catch (error) {
+      // Bắt lỗi từ Service ném ra (NotFoundException)
+      throw new HttpException({
+        status: HttpStatus.BAD_REQUEST,
+        error: error.message || 'Lỗi khi chuyển booking',
+      }, HttpStatus.BAD_REQUEST);
+    }
+  }
 
   @Post("api/pending/pendingBookingToDB")
   @UseGuards(GatewayAuthGuard)

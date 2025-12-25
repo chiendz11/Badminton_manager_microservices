@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 
-export type PassPostDocument = PassPost & Document;
+export type PassPostDocument = HydratedDocument<PassPost>;
 
 export enum PassPostStatus {
     ACTIVE = 'ACTIVE',

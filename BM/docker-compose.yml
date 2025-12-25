@@ -92,7 +92,7 @@ services:
       - DEFAULT_AVATAR_URL=${DEFAULT_AVATAR_URL}
       - RABBITMQ_URL=amqp://guest:guest@my_rabbitmq:5672
       - MEILISEARCH_URL=http://my_meilisearch:7700
-      - MEILISEARCH_API_KEY=masterKey
+      - MEILISEARCH_API_KEY=masterKey123
     env_file:
       - .env
     depends_on:
@@ -237,6 +237,7 @@ services:
       - TRANSACTION_SERVICE_URL=${GATEWAY_TRANSACTION_URL}
       - NEWS_SERVICE_URL=${GATEWAY_NEWS_URL}
       - RATING_SERVICE_URL=${GATEWAY_RATING_URL}
+      - NOTIFICATION_SERVICE_URL=${GATEWAY_NOTIFICATION_URL}
 
       
       # --- SHARED CONFIG ---
@@ -462,6 +463,30 @@ services:
       - api_gateway
     networks:
       - microservice_network
+  # ----------------------------------------------------
+  # NOTIFICATION SERVICE
+  # ----------------------------------------------------
+  notification_service:
+    build:
+      context: ./services/notification_service
+      dockerfile: Dockerfile
+    container_name: notification_service
+    environment:
+      - NODE_ENV=production
+      
+      # Kết nối RabbitMQ (Lưu ý: host là 'rabbitmq' theo file compose của bạn)
+      - RABBITMQ_URI=amqp://guest:guest@rabbitmq:5672
+      - PORT=8089
+      # Kết nối MongoDB (Map biến từ file .env gốc vào đây)
+      - MONGO_URI=${NOTIFICATION_MONGO_URI}
+    ports:
+      - "8089:8089"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservice_network
+    restart: always
 
 networks:
   microservice_network:

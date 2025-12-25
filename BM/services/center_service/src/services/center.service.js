@@ -73,6 +73,17 @@ const CenterService = {
         
         return centers; 
     },
+
+    async getCourtById(courtId) {
+        // Tìm theo courtId (custom ID) hoặc _id tùy DB của bạn
+        // Ở đây mình dùng findOne({ courtId }) theo logic code cũ
+        const court = await Court.findOne({ courtId }).populate('centerId', 'name address'); 
+        
+        if (!court) {
+            throw new Error('Không tìm thấy sân với ID này.');
+        }
+        return court;
+    },
     
     /**
      * @description Lấy chi tiết trung tâm và danh sách sân

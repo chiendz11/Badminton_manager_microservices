@@ -15,10 +15,16 @@ import { BullModule } from '@nestjs/bullmq';
 import { BookingProcessor } from './booking-expiration.processor';
 import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 import { UserWorker } from './Worker/user-profile.worker';
+import { PassPost, PassPostSchema} from './Schema/pass-booking.schema'
+import { PassPostService } from './Service/pass-booking.service'
+import { PassPostController } from './Controller/passbooking.controller'
+import { InterestedUser, InterestedUserSchema} from './Schema/interested_user.schema'
 import Redis from 'ioredis';
+import { HttpModule } from '@nestjs/axios'
 
 @Module({
   imports: [
+    HttpModule,
     RabbitMQModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -75,18 +81,22 @@ import Redis from 'ioredis';
     MongooseModule.forFeature([{ name: Center.name, schema: CenterSchema }]),
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     MongooseModule.forFeature([{ name: Court.name, schema: CourtSchema }]),
+    MongooseModule.forFeature([{ name: PassPost.name, schema: PassPostSchema}]),
+    MongooseModule.forFeature([{ name: InterestedUser.name, schema: InterestedUserSchema }]),
   ],
   controllers: [
     BookingController,
     CenterController,
     PaymentController,
+    PassPostController,
   ],
   providers: [
     BookingService,
     CenterService,
     PaymentService,
     BookingProcessor,
-    UserWorker, 
+    UserWorker,
+    PassPostService, 
     
     // 3. PROVIDER CHO REDIS CLIENT
     {

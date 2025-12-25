@@ -137,6 +137,11 @@ const HistoryTab = ({
 
 
   // --- 6. HANDLERS ---
+  const handlePassSuccess = () => {
+    // Reload lại danh sách lịch sử để cập nhật trạng thái
+    fetchBookingHistory(true);
+  };
+  
   const handlePageChange = (page) => {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
@@ -468,7 +473,8 @@ const HistoryTab = ({
         isOpen={isPassModalOpen}
         onClose={() => setIsPassModalOpen(false)}
         booking={selectedBookingToPass}
-        onConfirm={handleConfirmPass}
+        // 👇 Thay onConfirm bằng onSuccess
+        onSuccess={handlePassSuccess} 
       />
     </div>
   );
